@@ -1,11 +1,26 @@
 // package disaster.hazard;
 
-import javax.swing.*;
-import javax.swing.plaf.basic.BasicComboBoxUI;
-import javax.swing.plaf.basic.BasicScrollBarUI;
-import java.awt.*;
+import java.awt.BasicStroke;
+import java.awt.BorderLayout;
+import java.awt.CardLayout;
+import java.awt.Color;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.GridLayout;
+import java.awt.Insets;
+import java.awt.RenderingHints;
+import java.awt.Stroke;
 import java.awt.color.ColorSpace;
-import java.awt.event.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.ColorConvertOp;
@@ -21,50 +36,30 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * ==============================================================================
- * DISASTER HAZARD DETECTION SYSTEM — OBJECT-ORIENTED DESIGN (OOP)
- * Real-Time Camera Feed & YOLO Neural Object Recognition
- * ==============================================================================
- *
- * OOP ARCHITECTURE BREAKDOWN:
- *
- * 1. ENCAPSULATION:
- *    • HazardItem: Wraps detected object attributes (name, confidence, bounding
- *      box, risks) inside private fields with public getters/setters.
- *    • CameraDetectionEngine: Manages camera hardware, thread lifecycle, and
- *      frame buffers privately, exposing clean control methods (toggle, switch).
- *    • YoloOnnxDetector: Hides ONNX model loading, tensor buffers, and NMS math.
- *    • SafetyTheme: Groups design constants into an immutable, private-constructor class.
- *
- * 2. ABSTRACTION:
- *    • DisasterScenario: Abstract base class defining essential methods:
- *        - evaluateOverallRisk(hazards): Computes overall hazard rating.
- *        - getAdvisoryWarning(hazards): Generates actionable safety instruction.
- *        - getHazardRisk(hazard): Classifies risk severity for a specific object.
- *        - getHazardExplanation(hazard): Provides rationale for vulnerability.
- *    • DetectionListener: Interface decoupling camera updates from UI components.
- *    • ScreenNavigator: Interface defining screen navigation contracts.
- *    • BaseScreenPanel: Abstract template for user interface screens.
- *
- * 3. INHERITANCE:
- *    • EarthquakeScenario extends DisasterScenario (inherits base properties).
- *    • FloodScenario extends DisasterScenario.
- *    • FireScenario extends DisasterScenario.
- *    • MainMenuPanel & LiveDetectionPanel extend BaseScreenPanel (which extends JPanel).
- *    • CyberButton extends JButton; CyberCardPanel extends JPanel; RiskBadge extends JLabel.
- *
- * 4. POLYMORPHISM:
- *    • DisasterScenario references dynamically call overridden methods at runtime:
- *      activeScenario.evaluateOverallRisk() executes scenario-specific algorithms
- *      without the UI knowing which specific disaster subclass is active.
- * ==============================================================================
- */
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+import javax.swing.plaf.basic.BasicScrollBarUI;
+
+
 public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
 
     public static final String SCREEN_MAIN_MENU = "SCREEN_MAIN_MENU";
@@ -151,9 +146,7 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
     }
 }
 
-// ------------------------------------------------------------------------------
-// 1. MONOCHROMATIC THEME & STYLING CONSTANTS (ENCAPSULATION)
-// ------------------------------------------------------------------------------
+
 final class SafetyTheme {
     private SafetyTheme() {}
 
@@ -195,11 +188,6 @@ final class SafetyTheme {
 // 2. MODEL LAYER (ENCAPSULATION, ABSTRACTION, INHERITANCE, POLYMORPHISM)
 // ------------------------------------------------------------------------------
 
-/**
- * Monochromatic Risk Scale:
- * Differentiates severity via contrast polarity (inverted vs outlined),
- * geometric glyphs (●, ◆, ▲, ✖), and stroke weight rather than color hue.
- */
 enum RiskLevel {
     LOW(
         "● LOW RISK",
