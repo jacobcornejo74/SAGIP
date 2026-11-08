@@ -1,0 +1,6 @@
+{
+  "name": "Disaster Hazard Detection System",
+  "description": "Real-Time Hazard Detection and Risk Assessment using real camera stream and YOLO object recognition for earthquake, flood, and fire disaster scenarios.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Java App via Maven (Recommended)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": ["clean", "compile", "exec:java"],
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "java",
+      "name": "Run Java Swing App (Direct Debugger)",
+      "request": "launch",
+      "mainClass": "DisasterHazardSystemApp",
+      "projectName": "ai-disaster-hazard-detection"
+    },
+    {
+      "name": "Run Web App Simulator (npm run dev)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
