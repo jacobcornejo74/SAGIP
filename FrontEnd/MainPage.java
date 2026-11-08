@@ -26,6 +26,7 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.UIManager;
+import javax.swing.UnsupportedLookAndFeelException;
 import javax.swing.border.EmptyBorder;
 
 public class MainPage {
@@ -46,7 +47,7 @@ public class MainPage {
         SwingUtilities.invokeLater(() -> {
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            } catch (Exception exception) {
+            } catch (ClassNotFoundException | IllegalAccessException | InstantiationException | UnsupportedLookAndFeelException exception) {
                 System.err.println("Could not load the system look and feel: " + exception.getMessage());
             }
             new MainPage().showWindow();
@@ -432,18 +433,9 @@ public class MainPage {
             for (int x = firstX; x < width + sceneWidth; x += tileWidth) {
                 int type = Math.floorMod(firstIndex++, 6);
                 switch (type) {
-                    case 0:
-                    case 2:
-                    case 5:
-                        drawHouse(g, x, base, tileWidth, height, type);
-                        break;
-                    case 1:
-                    case 4:
-                        drawOffice(g, x, base, tileWidth, height, type == 4);
-                        break;
-                    default:
-                        drawSchool(g, x, base, tileWidth, height);
-                        break;
+                    case 0, 2, 5 -> drawHouse(g, x, base, tileWidth, height, type);
+                    case 1, 4 -> drawOffice(g, x, base, tileWidth, height, type == 4);
+                    default -> drawSchool(g, x, base, tileWidth, height);
                 }
             }
         }
