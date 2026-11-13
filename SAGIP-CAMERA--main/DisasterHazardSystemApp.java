@@ -1,29 +1,14 @@
 // package disaster.hazard;
 
-import java.awt.BasicStroke;
-import java.awt.BorderLayout;
-import java.awt.CardLayout;
-import java.awt.Color;
-import java.awt.Cursor;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
-import java.awt.GridLayout;
-import java.awt.Insets;
-import java.awt.RenderingHints;
-import java.awt.Stroke;
-import java.awt.color.ColorSpace;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import javax.swing.plaf.basic.BasicScrollBarUI;
+import java.awt.*;
+import java.awt.event.*;
+import java.awt.geom.Ellipse2D;
 import java.awt.geom.Rectangle2D;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
-import java.awt.image.ColorConvertOp;
 import java.io.File;
 import java.io.InputStream;
 import java.net.URI;
@@ -36,63 +21,55 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
-import javax.swing.JButton;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.SwingConstants;
-import javax.swing.SwingUtilities;
-import javax.swing.UIManager;
-import javax.swing.plaf.basic.BasicScrollBarUI;
-
-
+/**
+ * SAGIP - Disaster Hazard Detection System
+ * Object-Oriented Design:
+ *
+ * 1. Encapsulation:
+ *    - HazardItem stores detection label, confidence, bounding box, and risks in private fields.
+ *    - CameraDetectionEngine manages webcam hardware, worker threads, and frame buffers privately.
+ *    - YoloOnnxDetector isolates ONNX session loading, image tensor preparation, and NMS math.
+ *    - SagipTheme groups dark and light color palettes behind helper methods.
+ *
+ * 2. Abstraction:
+ *    - DisasterScenario defines abstract risk evaluation methods implemented by each disaster type.
+ *    - DetectionListener decouples camera frame updates from user interface screens.
+ *    - ScreenNavigator and CameraControlListener define clear contracts between screens and hardware.
+ *
+ * 3. Inheritance:
+ *    - EarthquakeScenario, FloodScenario, and FireScenario extend DisasterScenario.
+ *    - CameraPage, CameraViewportPanel, MenuBackground, and ContrastPanel extend JPanel.
+ *
+ * 4. Polymorphism:
+ *    - DisasterScenario references invoke subclass-specific risk evaluation methods at runtime.
+ */
 public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
 
-    public static final String SCREEN_MAIN_MENU = "SCREEN_MAIN_MENU";
-    public static final String SCREEN_LIVE_DETECTION = "SCREEN_LIVE_DETECTION";
+    public static final String SCREEN_HOME = "home";
+    public static final String SCREEN_CAMERA = "camera";
+    public static final String SCREEN_STORAGE = "storage";
+    public static final String SCREEN_MANUAL = "manual";
 
-    private final CardLayout cardLayout;
-    private final JPanel cardsContainer;
-    private final MainMenuPanel mainMenuPanel;
-    private final LiveDetectionPanel liveDetectionPanel;
-    private BaseScreenPanel currentScreen;
+    private CardLayout cardLayout;
+    private JPanel screens;
+    private boolean darkMode = true;
+    private CameraPage cameraPage;
+    private final List<SavedScanRecord> savedAssessments = new ArrayList<>();
 
     public DisasterHazardSystemApp() {
-        super("Disaster Hazard Detection System");
+        super("SAGIP");
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setPreferredSize(new Dimension(1380, 860));
-        setMinimumSize(new Dimension(1100, 720));
+        setMinimumSize(new Dimension(900, 600));
+        setSize(1180, 740);
         setLocationRelativeTo(null);
-        getContentPane().setBackground(SafetyTheme.BG_DARKEST);
 
-        this.cardLayout = new CardLayout();
-        this.cardsContainer = new JPanel(cardLayout);
-        this.cardsContainer.setBackground(SafetyTheme.BG_DARKEST);
-
-        this.mainMenuPanel = new MainMenuPanel(this);
-        this.liveDetectionPanel = new LiveDetectionPanel(this);
-
-        this.cardsContainer.add(mainMenuPanel, SCREEN_MAIN_MENU);
-        this.cardsContainer.add(liveDetectionPanel, SCREEN_LIVE_DETECTION);
-
-        add(cardsContainer);
-        navigateToLiveDetection();
-        pack();
+        rebuildScreens(SCREEN_HOME);
 
         addWindowListener(new WindowAdapter() {
             @Override
@@ -102,34 +79,268 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
         });
     }
 
+    private void rebuildScreens(String selectedScreen) {
+        if (cameraPage != null) {
+            cameraPage.onScreenHidden();
+        }
+
+        cardLayout = new CardLayout();
+        screens = new JPanel(cardLayout);
+
+        cameraPage = new CameraPage(darkMode, this);
+        cameraPage.setBackAction(this::navigateToMainMenu);
+
+        screens.add(createHomeScreen(), SCREEN_HOME);
+        screens.add(cameraPage, SCREEN_CAMERA);
+        screens.add(createStorageScreen(), SCREEN_STORAGE);
+        screens.add(createManualScreen(), SCREEN_MANUAL);
+
+        setContentPane(screens);
+        cardLayout.show(screens, selectedScreen);
+        if (SCREEN_CAMERA.equals(selectedScreen)) {
+            cameraPage.onScreenDisplayed();
+        }
+        revalidate();
+        repaint();
+    }
+
     @Override
     public void navigateToMainMenu() {
-        if (currentScreen != null) currentScreen.onScreenHidden();
-        cardLayout.show(cardsContainer, SCREEN_MAIN_MENU);
-        currentScreen = mainMenuPanel;
-        mainMenuPanel.onScreenDisplayed();
+        if (cameraPage != null) {
+            cameraPage.stopCamera();
+            cameraPage.onScreenHidden();
+        }
+        cardLayout.show(screens, SCREEN_HOME);
     }
 
     @Override
     public void navigateToLiveDetection() {
-        if (currentScreen != null) currentScreen.onScreenHidden();
-        cardLayout.show(cardsContainer, SCREEN_LIVE_DETECTION);
-        currentScreen = liveDetectionPanel;
-        liveDetectionPanel.onScreenDisplayed();
+        cardLayout.show(screens, SCREEN_CAMERA);
+        cameraPage.onScreenDisplayed();
     }
 
-    private static void installMonochromeSwingDefaults() {
-        UIManager.put("Panel.background", SafetyTheme.BG_DARKEST);
-        UIManager.put("ComboBox.background", SafetyTheme.BG_INPUT);
-        UIManager.put("ComboBox.foreground", SafetyTheme.TEXT_PRIMARY);
-        UIManager.put("ComboBox.selectionBackground", SafetyTheme.MONO_WHITE);
-        UIManager.put("ComboBox.selectionForeground", SafetyTheme.BG_DARKEST);
-        UIManager.put("ComboBox.buttonBackground", SafetyTheme.BG_CARD);
-        UIManager.put("ComboBox.buttonShadow", SafetyTheme.BORDER_SUBTLE);
-        UIManager.put("ComboBox.buttonDarkShadow", SafetyTheme.BG_DARKEST);
-        UIManager.put("ComboBox.buttonHighlight", SafetyTheme.BORDER_STRONG);
-        UIManager.put("ScrollBar.thumb", SafetyTheme.BG_CARD_HOVER);
-        UIManager.put("ScrollBar.track", SafetyTheme.BG_DARKEST);
+    public void navigateToStorage() {
+        rebuildScreens(SCREEN_STORAGE);
+    }
+
+    public void navigateToManual() {
+        cardLayout.show(screens, SCREEN_MANUAL);
+    }
+
+    public void toggleTheme() {
+        darkMode = !darkMode;
+        rebuildScreens(SCREEN_HOME);
+    }
+
+    public void saveAssessment(BufferedImage snapshot, List<HazardItem> hazards, RiskLevel overall) {
+        String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+        List<String> summary = new ArrayList<>();
+        for (HazardItem item : hazards) {
+            summary.add(String.format("%s (%d%%)", item.getObjectName(), item.getConfidencePercentage()));
+        }
+        savedAssessments.add(0, new SavedScanRecord(time, overall, hazards.size(), snapshot, summary));
+    }
+
+    private JComponent createHomeScreen() {
+        MenuBackground background = new MenuBackground(darkMode);
+        background.setLayout(new BorderLayout());
+        background.setBorder(new EmptyBorder(25, 30, 22, 30));
+
+        JLabel edition = SagipTheme.label("SMART INCIDENT PREVENTION", 11, SagipTheme.muted(darkMode), Font.BOLD);
+        edition.setHorizontalAlignment(SwingConstants.RIGHT);
+        background.add(edition, BorderLayout.NORTH);
+
+        JPanel center = new JPanel(new BorderLayout());
+        center.setOpaque(false);
+        JPanel menu = new ContrastPanel(darkMode);
+        menu.setOpaque(false);
+        menu.setLayout(new BoxLayout(menu, BoxLayout.Y_AXIS));
+        menu.setBorder(new EmptyBorder(22, 32, 22, 32));
+
+        JLabel title = SagipTheme.label("SAGIP", 58, SagipTheme.text(darkMode), Font.BOLD);
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JLabel subtitle = SagipTheme.label("SMART GUARD FOR INCIDENT PREVENTION", 12, SagipTheme.muted(darkMode), Font.PLAIN);
+        subtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        menu.add(title);
+        menu.add(Box.createVerticalStrut(3));
+        menu.add(subtitle);
+        menu.add(Box.createVerticalStrut(34));
+        menu.add(menuButton("START", "Scan a space for hazards", this::navigateToLiveDetection));
+        menu.add(Box.createVerticalStrut(9));
+        menu.add(menuButton("STORAGE", "View saved assessments (" + savedAssessments.size() + ")", this::navigateToStorage));
+        menu.add(Box.createVerticalStrut(9));
+        menu.add(menuButton("THEME  \u00B7  " + (darkMode ? "DARK" : "LIGHT"),
+                "Switch the appearance", this::toggleTheme));
+        menu.add(Box.createVerticalStrut(9));
+        menu.add(menuButton("MANUAL", "Learn how to use SAGIP", this::navigateToManual));
+
+        JPanel menuHolder = new JPanel(new GridBagLayout());
+        menuHolder.setOpaque(false);
+        menuHolder.add(menu);
+        center.add(menuHolder, BorderLayout.CENTER);
+        background.add(center, BorderLayout.CENTER);
+
+        JLabel footer = SagipTheme.label("SAGIP  \u2022  FIRE & EARTHQUAKE PREPAREDNESS", 10, SagipTheme.text(darkMode), Font.BOLD);
+        footer.setHorizontalAlignment(SwingConstants.CENTER);
+        background.add(footer, BorderLayout.SOUTH);
+        return background;
+    }
+
+    private JButton menuButton(String title, String detail, Runnable action) {
+        JButton button = new JButton("<html><div style='text-align:center;'>"
+                + "<span style='font-family:Segoe UI;font-size:14pt;font-weight:700;color:"
+                + SagipTheme.htmlColor(SagipTheme.text(darkMode)) + ";'>"
+                + title + "</span><br>"
+                + "<span style='font-family:Segoe UI;font-size:9pt;font-weight:400;color:"
+                + SagipTheme.htmlColor(SagipTheme.muted(darkMode)) + ";'>"
+                + detail + "</span></div></html>");
+        button.setFont(new Font(SagipTheme.FONT_FAMILY, Font.BOLD, 14));
+        button.setForeground(SagipTheme.text(darkMode));
+        button.setBackground(darkMode ? new Color(48, 53, 56) : new Color(244, 235, 215));
+        button.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(darkMode ? new Color(18, 23, 28) : new Color(99, 78, 55), 1),
+                new EmptyBorder(7, 20, 7, 20)));
+        button.setFocusPainted(false);
+        button.setContentAreaFilled(true);
+        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        button.setAlignmentX(Component.CENTER_ALIGNMENT);
+        button.setMaximumSize(new Dimension(360, 62));
+        button.setPreferredSize(new Dimension(360, 62));
+        button.addActionListener(event -> action.run());
+        button.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent event) {
+                button.setBackground(SagipTheme.hover(darkMode));
+            }
+
+            @Override
+            public void mouseExited(MouseEvent event) {
+                button.setBackground(darkMode ? new Color(48, 53, 56) : new Color(244, 235, 215));
+            }
+        });
+        return button;
+    }
+
+    private JComponent createStorageScreen() {
+        JPanel page = createSubPage("STORAGE", "Saved assessments");
+        if (savedAssessments.isEmpty()) {
+            JPanel content = new JPanel();
+            content.setOpaque(false);
+            content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+            content.setBorder(new EmptyBorder(30, 30, 30, 30));
+
+            JLabel icon = SagipTheme.label("\u25A3", 42, SagipTheme.accent(darkMode), Font.BOLD);
+            icon.setAlignmentX(Component.CENTER_ALIGNMENT);
+            JLabel empty = SagipTheme.label("No saved assessments yet.", 17, SagipTheme.text(darkMode), Font.BOLD);
+            empty.setAlignmentX(Component.CENTER_ALIGNMENT);
+            JLabel detail = SagipTheme.label("Completed scans will appear here.", 12, SagipTheme.muted(darkMode), Font.PLAIN);
+            detail.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+            content.add(Box.createVerticalGlue());
+            content.add(icon);
+            content.add(Box.createVerticalStrut(12));
+            content.add(empty);
+            content.add(Box.createVerticalStrut(6));
+            content.add(detail);
+            content.add(Box.createVerticalGlue());
+            page.add(content, BorderLayout.CENTER);
+        } else {
+            JPanel list = new JPanel();
+            list.setOpaque(false);
+            list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
+            list.setBorder(new EmptyBorder(24, 36, 24, 36));
+            for (SavedScanRecord rec : savedAssessments) {
+                JPanel row = new JPanel(new BorderLayout(16, 0));
+                row.setBackground(SagipTheme.surface(darkMode));
+                row.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(SagipTheme.cardLine(darkMode), 1),
+                        new EmptyBorder(14, 18, 14, 18)));
+                row.setMaximumSize(new Dimension(820, 110));
+
+                JPanel info = new JPanel();
+                info.setOpaque(false);
+                info.setLayout(new BoxLayout(info, BoxLayout.Y_AXIS));
+                info.add(SagipTheme.label(rec.overall.getLabel() + "  ·  " + rec.detectionCount + " Detections",
+                        14, rec.overall.getColor(darkMode), Font.BOLD));
+                info.add(Box.createVerticalStrut(4));
+                info.add(SagipTheme.label(rec.timestamp, 12, SagipTheme.muted(darkMode), Font.PLAIN));
+                if (!rec.objectSummaries.isEmpty()) {
+                    info.add(Box.createVerticalStrut(6));
+                    info.add(SagipTheme.label(String.join(", ", rec.objectSummaries), 12, SagipTheme.text(darkMode), Font.PLAIN));
+                }
+                row.add(info, BorderLayout.CENTER);
+                list.add(row);
+                list.add(Box.createVerticalStrut(12));
+            }
+            JScrollPane scroll = new JScrollPane(list);
+            scroll.setBorder(null);
+            scroll.setOpaque(false);
+            scroll.getViewport().setOpaque(false);
+            page.add(scroll, BorderLayout.CENTER);
+        }
+        return page;
+    }
+
+    private JComponent createManualScreen() {
+        JPanel page = createSubPage("MANUAL", "Quick guide");
+        JPanel content = new JPanel();
+        content.setOpaque(false);
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBorder(new EmptyBorder(35, 55, 35, 55));
+        content.add(guideItem("1", "Start", "Open a new assessment and point the camera at the space."));
+        content.add(Box.createVerticalStrut(18));
+        content.add(guideItem("2", "Review", "Check detected fire, flood, or earthquake hazards and their severity."));
+        content.add(Box.createVerticalStrut(18));
+        content.add(guideItem("3", "Respond", "Follow the suggested corrective actions and save the assessment."));
+        page.add(content, BorderLayout.CENTER);
+        return page;
+    }
+
+    private JPanel createSubPage(String title, String subtitle) {
+        JPanel page = new JPanel(new BorderLayout());
+        page.setBackground(SagipTheme.background(darkMode));
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(SagipTheme.surface(darkMode));
+        header.setBorder(new EmptyBorder(18, 24, 18, 24));
+        JPanel titles = new JPanel();
+        titles.setOpaque(false);
+        titles.setLayout(new BoxLayout(titles, BoxLayout.Y_AXIS));
+        titles.add(SagipTheme.label(title, 18, SagipTheme.text(darkMode), Font.BOLD));
+        titles.add(Box.createVerticalStrut(3));
+        titles.add(SagipTheme.label(subtitle, 11, SagipTheme.muted(darkMode), Font.PLAIN));
+        header.add(titles, BorderLayout.WEST);
+        header.add(SagipTheme.pageButton("BACK TO MENU", darkMode, this::navigateToMainMenu), BorderLayout.EAST);
+
+        JPanel footer = new JPanel(new BorderLayout());
+        footer.setBackground(SagipTheme.surface(darkMode));
+        footer.setBorder(new EmptyBorder(10, 24, 10, 24));
+        footer.add(SagipTheme.label("SAGIP  \u2022  FIRE & EARTHQUAKE PREPAREDNESS", 10, SagipTheme.muted(darkMode), Font.BOLD),
+                BorderLayout.WEST);
+
+        page.add(header, BorderLayout.NORTH);
+        page.add(footer, BorderLayout.SOUTH);
+        return page;
+    }
+
+    private JComponent guideItem(String number, String title, String detail) {
+        JPanel row = new JPanel(new BorderLayout(16, 0));
+        row.setOpaque(true);
+        row.setBackground(SagipTheme.surface(darkMode));
+        row.setBorder(new EmptyBorder(18, 20, 18, 20));
+        row.setMaximumSize(new Dimension(760, 92));
+        JLabel step = SagipTheme.label(number, 24, SagipTheme.accent(darkMode), Font.BOLD);
+        step.setHorizontalAlignment(SwingConstants.CENTER);
+        step.setPreferredSize(new Dimension(42, 42));
+        JPanel words = new JPanel();
+        words.setOpaque(false);
+        words.setLayout(new BoxLayout(words, BoxLayout.Y_AXIS));
+        words.add(SagipTheme.label(title, 15, SagipTheme.text(darkMode), Font.BOLD));
+        words.add(Box.createVerticalStrut(6));
+        words.add(SagipTheme.label("<html>" + detail + "</html>", 12, SagipTheme.muted(darkMode), Font.PLAIN));
+        row.add(step, BorderLayout.WEST);
+        row.add(words, BorderLayout.CENTER);
+        return row;
     }
 
     public static void main(String[] args) {
@@ -138,111 +349,148 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
 
         SwingUtilities.invokeLater(() -> {
             try {
-                UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
-                installMonochromeSwingDefaults();
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
             } catch (Exception ignored) {}
             new DisasterHazardSystemApp().setVisible(true);
         });
     }
 }
 
+class SavedScanRecord {
+    final String timestamp;
+    final RiskLevel overall;
+    final int detectionCount;
+    final BufferedImage snapshot;
+    final List<String> objectSummaries;
 
-final class SafetyTheme {
-    private SafetyTheme() {}
+    SavedScanRecord(String timestamp, RiskLevel overall, int detectionCount,
+                    BufferedImage snapshot, List<String> objectSummaries) {
+        this.timestamp = timestamp;
+        this.overall = overall;
+        this.detectionCount = detectionCount;
+        this.snapshot = snapshot;
+        this.objectSummaries = objectSummaries;
+    }
+}
 
-    // Pure Architectural Monochrome Surface Hierarchy (Obsidian -> Zinc -> Stark White)
-    public static final Color BG_DARKEST    = new Color(9, 9, 11);      // #09090B Obsidian
-    public static final Color BG_DARK       = new Color(16, 16, 19);    // #101013 Carbon
-    public static final Color BG_PANEL      = new Color(22, 22, 26);    // #16161A Zinc Panel
-    public static final Color BG_CARD       = new Color(30, 30, 35);    // #1E1E23 Graphite Card
-    public static final Color BG_CARD_HOVER = new Color(44, 44, 51);    // #2C2C33 Elevated Ash
-    public static final Color BG_INPUT      = new Color(14, 14, 17);    // #0E0E11 Recessed Input
+// ------------------------------------------------------------------------------
+// 1. SAGIP THEME CONSTANTS (ENCAPSULATION)
+// ------------------------------------------------------------------------------
+final class SagipTheme {
+    private SagipTheme() {}
 
-    // Strict Grayscale Luminance Accents (Zero Chromatic Hue)
-    public static final Color MONO_WHITE    = new Color(250, 250, 250); // #FAFAFA Pure Stark White
-    public static final Color MONO_PLATINUM = new Color(228, 228, 231); // #E4E4E7 Platinum
-    public static final Color MONO_SILVER   = new Color(185, 185, 194); // #B9B9C2 Silver
-    public static final Color MONO_ASH      = new Color(138, 138, 148); // #8A8A94 Mid Ash
-    public static final Color MONO_SLATE    = new Color(82, 82, 91);    // #52525B Dark Zinc
+    public static final String FONT_FAMILY = "Segoe UI";
+    public static final Font FONT_MONO_MED   = new Font("Monospaced", Font.BOLD, 12);
+    public static final Font FONT_MONO_SMALL = new Font("Monospaced", Font.PLAIN, 11);
 
-    public static final Color BORDER_SUBTLE = new Color(63, 63, 70, 175); // #3F3F46 Hairline
-    public static final Color BORDER_STRONG = new Color(113, 113, 122);   // #71717A Structural
-    public static final Color BORDER_BRIGHT = new Color(228, 228, 231);   // #E4E4E7 High-Contrast
+    public static Color background(boolean darkMode) {
+        return darkMode ? new Color(29, 34, 36) : new Color(241, 235, 220);
+    }
 
-    public static final Color TEXT_PRIMARY   = new Color(250, 250, 250);  // #FAFAFA
-    public static final Color TEXT_SECONDARY = new Color(161, 161, 170);  // #A1A1AA
-    public static final Color TEXT_MUTED     = new Color(113, 113, 122);  // #71717A
+    public static Color surface(boolean darkMode) {
+        return darkMode ? new Color(42, 48, 49) : new Color(224, 214, 193);
+    }
 
-    public static final Font FONT_TITLE_LARGE = new Font("SansSerif", Font.BOLD, 28);
-    public static final Font FONT_TITLE_MED   = new Font("SansSerif", Font.BOLD, 18);
-    public static final Font FONT_TITLE_SMALL = new Font("SansSerif", Font.BOLD, 13);
-    public static final Font FONT_BODY_BOLD   = new Font("SansSerif", Font.BOLD, 12);
-    public static final Font FONT_BODY        = new Font("SansSerif", Font.PLAIN, 12);
-    public static final Font FONT_BODY_SMALL  = new Font("SansSerif", Font.PLAIN, 11);
-    public static final Font FONT_BADGE       = new Font("Monospaced", Font.BOLD, 10);
-    public static final Font FONT_MONO_MED    = new Font("Monospaced", Font.BOLD, 12);
-    public static final Font FONT_MONO_SMALL  = new Font("Monospaced", Font.PLAIN, 11);
+    public static Color text(boolean darkMode) {
+        return darkMode ? new Color(247, 241, 226) : new Color(49, 42, 34);
+    }
+
+    public static Color muted(boolean darkMode) {
+        return darkMode ? new Color(205, 198, 180) : new Color(104, 91, 73);
+    }
+
+    public static Color accent(boolean darkMode) {
+        return darkMode ? new Color(243, 145, 55) : new Color(190, 94, 37);
+    }
+
+    public static Color hover(boolean darkMode) {
+        return darkMode ? new Color(104, 72, 49) : new Color(255, 190, 105);
+    }
+
+    public static Color preview(boolean darkMode) {
+        return darkMode ? new Color(31, 34, 33) : new Color(229, 222, 208);
+    }
+
+    public static Color cardLine(boolean darkMode) {
+        return darkMode ? new Color(255, 255, 255, 42) : new Color(65, 47, 33, 55);
+    }
+
+    public static JLabel label(String text, int size, Color color, int style) {
+        JLabel label = new JLabel(text);
+        label.setFont(new Font(FONT_FAMILY, style, size));
+        label.setForeground(color);
+        return label;
+    }
+
+    public static JButton pageButton(String text, boolean darkMode, Runnable action) {
+        JButton button = new JButton(text);
+        button.setFont(new Font(FONT_FAMILY, Font.BOLD, 13));
+        button.setForeground(text(darkMode));
+        button.setBackground(surface(darkMode));
+        button.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(accent(darkMode), 1),
+                new EmptyBorder(10, 16, 10, 16)));
+        button.setFocusPainted(false);
+        button.setContentAreaFilled(false);
+        button.setOpaque(true);
+        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        button.addActionListener(event -> action.run());
+        button.addMouseListener(new MouseAdapter() {
+            @Override public void mouseEntered(MouseEvent e) { button.setBackground(hover(darkMode)); }
+            @Override public void mouseExited(MouseEvent e) { button.setBackground(surface(darkMode)); }
+        });
+        return button;
+    }
+
+    public static String htmlColor(Color color) {
+        return String.format("#%02X%02X%02X", color.getRed(), color.getGreen(), color.getBlue());
+    }
 }
 
 // ------------------------------------------------------------------------------
 // 2. MODEL LAYER (ENCAPSULATION, ABSTRACTION, INHERITANCE, POLYMORPHISM)
 // ------------------------------------------------------------------------------
-
 enum RiskLevel {
     LOW(
-        "● LOW RISK",
-        new Color(145, 145, 155),
-        new Color(32, 32, 36, 160),
-        new Color(228, 228, 231),
-        false,
-        1.2f
-    ),
-    MODERATE(
-        "◆ MODERATE",
-        new Color(195, 195, 205),
-        new Color(55, 55, 62, 165),
-        new Color(244, 244, 245),
-        false,
+        "LOW RISK",
+        new Color(104, 190, 116),
+        new Color(52, 132, 68),
         1.8f
     ),
+    MODERATE(
+        "MEDIUM RISK",
+        new Color(240, 196, 60),
+        new Color(190, 142, 16),
+        2.2f
+    ),
     HIGH(
-        "▲ HIGH RISK",
-        new Color(244, 244, 245),
-        new Color(250, 250, 250, 38),
-        new Color(250, 250, 250),
-        false,
+        "HIGH RISK",
+        new Color(243, 145, 55),
+        new Color(204, 104, 28),
         2.6f
     ),
     CRITICAL(
-        "✖ CRITICAL",
-        new Color(250, 250, 250),
-        new Color(250, 250, 250, 235),
-        new Color(9, 9, 11),
-        true,
+        "CRITICAL RISK",
+        new Color(226, 72, 63),
+        new Color(184, 48, 42),
         3.2f
     );
 
     private final String label;
-    private final Color strokeColor;
-    private final Color bgFill;
-    private final Color textColor;
-    private final boolean inverted;
+    private final Color darkColor;
+    private final Color lightColor;
     private final float strokeWidth;
 
-    RiskLevel(String label, Color strokeColor, Color bgFill, Color textColor, boolean inverted, float strokeWidth) {
+    RiskLevel(String label, Color darkColor, Color lightColor, float strokeWidth) {
         this.label = label;
-        this.strokeColor = strokeColor;
-        this.bgFill = bgFill;
-        this.textColor = textColor;
-        this.inverted = inverted;
+        this.darkColor = darkColor;
+        this.lightColor = lightColor;
         this.strokeWidth = strokeWidth;
     }
 
     public String getLabel() { return label; }
-    public Color getStrokeColor() { return strokeColor; }
-    public Color getBgFill() { return bgFill; }
-    public Color getTextColor() { return textColor; }
-    public boolean isInverted() { return inverted; }
+    public Color getStrokeColor() { return darkColor; }
+    public Color getColor(boolean darkMode) { return darkMode ? darkColor : lightColor; }
     public float getStrokeWidth() { return strokeWidth; }
 }
 
@@ -755,10 +1003,9 @@ class CameraDetectionEngine {
 
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
     private final AtomicBoolean reconnectRequested = new AtomicBoolean(false);
-    private volatile boolean userPausedCamera = false;
+    private volatile boolean userPausedCamera = true;
     private volatile boolean isCameraConnected = false;
     private volatile boolean isAiDetectionActive = true;
-    private volatile boolean monochromeOptics = false;
     private volatile double currentFps = 0.0;
     private volatile int cameraIndex = 0;
     private float confidenceThreshold = 0.40f;
@@ -767,12 +1014,11 @@ class CameraDetectionEngine {
     private final List<HazardItem> detectedHazards = new CopyOnWriteArrayList<>();
     private final List<DetectionListener> listeners = new CopyOnWriteArrayList<>();
     private final YoloOnnxDetector yoloDetector = new YoloOnnxDetector();
-    private final ColorConvertOp grayscaleOp = new ColorConvertOp(ColorSpace.getInstance(ColorSpace.CS_GRAY), null);
 
     private Object activeGrabber = null;
     private Object cachedFrameConverter = null;
     private Thread captureWorkerThread = null;
-    private String hardwareStatusMessage = "PROBING SYSTEM WEBCAM...";
+    private String hardwareStatusMessage = "CAMERA STANDBY";
 
     private CameraDetectionEngine() {
         yoloDetector.initializeAsync();
@@ -788,7 +1034,7 @@ class CameraDetectionEngine {
         if (isRunning.get()) return;
         isRunning.set(true);
 
-        captureWorkerThread = new Thread(this::runCaptureLoop, "Monochrome-Camera-YOLO-Worker");
+        captureWorkerThread = new Thread(this::runCaptureLoop, "Camera-YOLO-Worker");
         captureWorkerThread.setDaemon(true);
         captureWorkerThread.start();
     }
@@ -802,7 +1048,9 @@ class CameraDetectionEngine {
     }
 
     private void runCaptureLoop() {
-        initHardwareCamera();
+        if (!userPausedCamera) {
+            initHardwareCamera();
+        }
 
         long lastFpsTime = System.currentTimeMillis();
         long lastReconnectTime = System.currentTimeMillis();
@@ -830,7 +1078,6 @@ class CameraDetectionEngine {
 
             BufferedImage displayFrame;
             if (rawFrame != null) {
-                // Run real YOLOv8 inference on crisp RGB frame (~10 Hz to keep UI silky at 30 FPS)
                 if (isAiDetectionActive && yoloDetector.isReady() && (loopStart - lastYoloTime >= 95)) {
                     lastYoloTime = loopStart;
                     List<HazardItem> results = yoloDetector.detect(rawFrame, confidenceThreshold);
@@ -839,12 +1086,10 @@ class CameraDetectionEngine {
                 } else if (!isAiDetectionActive) {
                     detectedHazards.clear();
                 }
-
-                // Pure natural RGB camera feed without filter
                 displayFrame = rawFrame;
             } else {
                 detectedHazards.clear();
-                displayFrame = generateDiagnosticOfflineFrame();
+                displayFrame = null;
             }
 
             this.currentFrame = displayFrame;
@@ -883,16 +1128,10 @@ class CameraDetectionEngine {
         releaseCameraHardware();
     }
 
-    private BufferedImage toMonochromeFrame(BufferedImage src) {
-        BufferedImage gray = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
-        grayscaleOp.filter(src, gray);
-        return gray;
-    }
-
     private void initHardwareCamera() {
         releaseCameraHardware();
 
-        // Strategy 1 (Primary): JavaCV OpenCVFrameGrabber (OpenCV 4.9 native driver for Win10/11, macOS ARM64/x64, Linux)
+        // Strategy 1 (Primary): JavaCV OpenCVFrameGrabber
         try {
             Class<?> grabberClass = Class.forName("org.bytedeco.javacv.OpenCVFrameGrabber");
             if (cachedFrameConverter == null) {
@@ -913,7 +1152,6 @@ class CameraDetectionEngine {
                     } catch (Throwable ignored) {}
                     grabberClass.getMethod("start").invoke(grabber);
 
-                    // Grab up to 6 warm-up frames to verify non-null optical RGB image (skips blank IR/virtual devices)
                     BufferedImage testImg = null;
                     for (int attempt = 0; attempt < 6; attempt++) {
                         testImg = convertOpenCvGrab(grabber);
@@ -925,7 +1163,7 @@ class CameraDetectionEngine {
                         this.activeGrabber = grabber;
                         this.cameraIndex = idx;
                         this.isCameraConnected = true;
-                        this.hardwareStatusMessage = "ONLINE: OPENCV CAMERA #" + idx + " (" + testImg.getWidth() + "x" + testImg.getHeight() + ")";
+                        this.hardwareStatusMessage = "ONLINE: CAMERA #" + idx + " (" + testImg.getWidth() + "x" + testImg.getHeight() + ")";
                         notifyCameraState();
                         return;
                     } else {
@@ -941,12 +1179,12 @@ class CameraDetectionEngine {
                 }
             }
         } catch (ClassNotFoundException e) {
-            hardwareStatusMessage = "MAVEN DRIVERS NOT LOADED — RUN WITH: mvn clean compile exec:java";
+            hardwareStatusMessage = "RUN VIA MAVEN: mvn clean compile exec:java";
         } catch (Throwable t) {
             hardwareStatusMessage = "OPENCV INIT ERROR: " + t.getMessage();
         }
 
-        // Strategy 2 (Fallback): Sarxos Webcam-Capture with non-null frame verification
+        // Strategy 2 (Fallback): Sarxos Webcam-Capture
         try {
             Class<?> webcamClass = Class.forName("com.github.sarxos.webcam.Webcam");
             List<?> cams = (List<?>) webcamClass.getMethod("getWebcams").invoke(null);
@@ -972,13 +1210,13 @@ class CameraDetectionEngine {
                     return;
                 } else {
                     try { webcamClass.getMethod("close").invoke(cam); } catch (Throwable ignored) {}
-                    hardwareStatusMessage = "CAMERA RETURNED EMPTY FRAME — CLOSE ZOOM/TEAMS OR CLICK SWITCH CAM";
+                    hardwareStatusMessage = "CAMERA RETURNED EMPTY FRAME";
                 }
             } else if (!hardwareStatusMessage.contains("MAVEN")) {
-                hardwareStatusMessage = "0 CAMERAS DETECTED BY OS — CHECK PRIVACY SETTINGS & USB CONNECTION";
+                hardwareStatusMessage = "NO CAMERAS DETECTED BY OS";
             }
         } catch (ClassNotFoundException e) {
-            hardwareStatusMessage = "MAVEN DRIVERS NOT LOADED — RUN WITH: mvn clean compile exec:java";
+            hardwareStatusMessage = "RUN VIA MAVEN: mvn clean compile exec:java";
         } catch (Throwable t) {
             hardwareStatusMessage = "WEBCAM BUSY / PERMISSION DENIED: " + t.getMessage();
         }
@@ -1029,71 +1267,29 @@ class CameraDetectionEngine {
         isCameraConnected = false;
     }
 
-    private BufferedImage generateDiagnosticOfflineFrame() {
-        int w = 960, h = 540;
-        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g2 = img.createGraphics();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        g2.setColor(SafetyTheme.BG_DARKEST);
-        g2.fillRect(0, 0, w, h);
-
-        // Subtle monochrome architectural grid
-        g2.setColor(new Color(28, 28, 32));
-        for (int x = 0; x < w; x += 48) g2.drawLine(x, 0, x, h);
-        for (int y = 0; y < h; y += 48) g2.drawLine(0, y, w, y);
-
-        int cardW = 696, cardH = 248;
-        int cardX = (w - cardW) / 2, cardY = (h - cardH) / 2;
-        g2.setColor(SafetyTheme.BG_PANEL);
-        g2.fillRect(cardX, cardY, cardW, cardH);
-        g2.setColor(SafetyTheme.BORDER_BRIGHT);
-        g2.setStroke(new BasicStroke(1.5f));
-        g2.drawRect(cardX, cardY, cardW, cardH);
-
-        // Inverted header band
-        g2.setColor(SafetyTheme.MONO_WHITE);
-        g2.fillRect(cardX, cardY, cardW, 38);
-        g2.setColor(SafetyTheme.BG_DARKEST);
-        g2.setFont(SafetyTheme.FONT_MONO_MED);
-        g2.drawString(userPausedCamera
-                ? "■  OPTICAL STREAM PAUSED BY OPERATOR"
-                : "▲  HARDWARE WEBCAM STREAM STANDBY", cardX + 20, cardY + 24);
-
-        g2.setFont(SafetyTheme.FONT_MONO_SMALL);
-        g2.setColor(SafetyTheme.TEXT_PRIMARY);
-        g2.drawString("DIAGNOSTIC: " + (userPausedCamera ? "STREAM MANUALLY HALTED" : hardwareStatusMessage), cardX + 24, cardY + 76);
-        g2.drawString("NEURAL NET: " + yoloDetector.getStatus() + "  ·  TARGET DEVICE: CAM #" + cameraIndex, cardX + 24, cardY + 98);
-
-        g2.setColor(SafetyTheme.TEXT_SECONDARY);
-        g2.drawString("1. Run with Maven (or press F5 in VS Code / run.bat) so OpenCV & ONNX JARs load:", cardX + 24, cardY + 136);
-        g2.setColor(SafetyTheme.MONO_WHITE);
-        g2.drawString("   mvn clean compile exec:java", cardX + 24, cardY + 156);
-        g2.setColor(SafetyTheme.TEXT_SECONDARY);
-        g2.drawString("2. Close Zoom/Teams/Browser camera tabs & enable OS Camera Privacy permission.", cardX + 24, cardY + 184);
-        g2.drawString("3. On laptops with IR sensors, click [SWITCH CAM] below to cycle CAM #0 / #1 / #2.", cardX + 24, cardY + 206);
-        g2.setColor(SafetyTheme.TEXT_MUTED);
-        g2.drawString(userPausedCamera
-                ? "Click [RESUME CAMERA] in the bottom bar to reopen sensor."
-                : "Auto-polling physical camera bus every 3.0 seconds...", cardX + 24, cardY + 230);
-
-        g2.dispose();
-        return img;
-    }
-
     public void addListener(DetectionListener l) { listeners.add(l); }
     public void removeListener(DetectionListener l) { listeners.remove(l); }
 
-    public void toggleCamera() {
-        if (isCameraConnected && !userPausedCamera) {
-            userPausedCamera = true;
-            hardwareStatusMessage = "STREAM MANUALLY HALTED";
-        } else {
-            userPausedCamera = false;
-            hardwareStatusMessage = "RECONNECTING CAMERA #" + cameraIndex + "...";
-        }
+    public void startCameraStream() {
+        userPausedCamera = false;
+        hardwareStatusMessage = "CONNECTING CAMERA #" + cameraIndex + "...";
         reconnectRequested.set(true);
         notifyCameraState();
+    }
+
+    public void stopCameraStream() {
+        userPausedCamera = true;
+        hardwareStatusMessage = "CAMERA STANDBY";
+        reconnectRequested.set(true);
+        notifyCameraState();
+    }
+
+    public void toggleCamera() {
+        if (!userPausedCamera) {
+            stopCameraStream();
+        } else {
+            startCameraStream();
+        }
     }
 
     public void switchCamera() {
@@ -1102,15 +1298,6 @@ class CameraDetectionEngine {
         hardwareStatusMessage = "SWITCHING TO CAMERA #" + cameraIndex + "...";
         reconnectRequested.set(true);
         notifyCameraState();
-    }
-
-    public void toggleAiDetection() {
-        isAiDetectionActive = !isAiDetectionActive;
-        notifyCameraState();
-    }
-
-    public void toggleMonochromeOptics() {
-        monochromeOptics = !monochromeOptics;
     }
 
     private void notifyCameraState() {
@@ -1123,8 +1310,9 @@ class CameraDetectionEngine {
     }
 
     public boolean isCameraConnected() { return isCameraConnected && !userPausedCamera; }
+    public boolean isUserPaused() { return userPausedCamera; }
     public boolean isAiDetectionActive() { return isAiDetectionActive; }
-    public boolean isMonochromeOptics() { return monochromeOptics; }
+    public String getHardwareStatusMessage() { return hardwareStatusMessage; }
     public double getCurrentFps() { return currentFps; }
     public BufferedImage getCurrentFrame() { return currentFrame; }
     public String getYoloStatus() { return yoloDetector.getStatus(); }
@@ -1133,274 +1321,254 @@ class CameraDetectionEngine {
 }
 
 // ------------------------------------------------------------------------------
-// 4. CUSTOM MONOCHROMATIC SWING UI COMPONENTS (INHERITANCE)
+// 4. SAGIP UI COMPONENTS & CAMERA VIEWPORT (INHERITANCE & POLYMORPHISM)
 // ------------------------------------------------------------------------------
-class CyberButton extends JButton {
-    public enum ButtonStyle { PRIMARY, INVERTED_OUTLINE, SECONDARY }
-    private final ButtonStyle style;
-    private boolean isHovered = false;
-    private boolean isPressed = false;
-    private int cornerRadius = 4;
+class MenuBackground extends JPanel {
+    private static final long serialVersionUID = 1L;
 
-    public CyberButton(String text, ButtonStyle style) {
-        super(text);
-        this.style = style;
-        setOpaque(false);
-        setContentAreaFilled(false);
-        setFocusPainted(false);
-        setBorderPainted(false);
-        setCursor(new Cursor(Cursor.HAND_CURSOR));
-        setFont(SafetyTheme.FONT_BODY_BOLD);
+    private final boolean darkMode;
+    private final javax.swing.Timer animation;
+    private int animationFrame;
 
-        addMouseListener(new MouseAdapter() {
-            @Override public void mouseEntered(MouseEvent e) { isHovered = true; repaint(); }
-            @Override public void mouseExited(MouseEvent e) { isHovered = false; repaint(); }
-            @Override public void mousePressed(MouseEvent e) { isPressed = true; repaint(); }
-            @Override public void mouseReleased(MouseEvent e) { isPressed = false; repaint(); }
+    public MenuBackground(boolean darkMode) {
+        this.darkMode = darkMode;
+        setOpaque(true);
+        animation = new javax.swing.Timer(45, event -> {
+            animationFrame++;
+            repaint();
         });
     }
 
-    public void setCornerRadius(int radius) { this.cornerRadius = radius; repaint(); }
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        animation.start();
+    }
 
     @Override
-    protected void paintComponent(Graphics g) {
-        Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    public void removeNotify() {
+        animation.stop();
+        super.removeNotify();
+    }
 
-        int w = getWidth(), h = getHeight();
-        Color bg, border, fg;
+    @Override
+    protected void paintComponent(Graphics graphics) {
+        super.paintComponent(graphics);
+        Graphics2D g = (Graphics2D) graphics.create();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        int width = getWidth();
+        int height = getHeight();
+        int skylineBase = (int) (height * 0.77);
+        Color skyTop = darkMode ? new Color(18, 29, 48) : new Color(112, 166, 194);
+        Color skyBottom = darkMode ? new Color(112, 82, 79) : new Color(246, 190, 143);
+        g.setPaint(new GradientPaint(0, 0, skyTop, 0, skylineBase, skyBottom));
+        g.fillRect(0, 0, width, skylineBase);
 
-        switch (style) {
-            case PRIMARY:
-                // Stark White Monochromatic CTA with Black Typography
-                bg = isPressed ? SafetyTheme.MONO_SILVER : isHovered ? SafetyTheme.MONO_PLATINUM : SafetyTheme.MONO_WHITE;
-                border = SafetyTheme.MONO_WHITE;
-                fg = SafetyTheme.BG_DARKEST;
-                break;
-            case INVERTED_OUTLINE:
-                bg = isPressed ? SafetyTheme.MONO_WHITE : isHovered ? SafetyTheme.BG_CARD_HOVER : SafetyTheme.BG_DARK;
-                border = SafetyTheme.BORDER_BRIGHT;
-                fg = isPressed ? SafetyTheme.BG_DARKEST : SafetyTheme.MONO_WHITE;
-                break;
-            default:
-                bg = isPressed ? SafetyTheme.BG_DARK : isHovered ? SafetyTheme.BG_CARD_HOVER : SafetyTheme.BG_CARD;
-                border = isHovered ? SafetyTheme.BORDER_BRIGHT : SafetyTheme.BORDER_STRONG;
-                fg = isHovered ? SafetyTheme.MONO_WHITE : SafetyTheme.TEXT_PRIMARY;
-                break;
+        int sunSize = Math.max(48, height / 11);
+        int sunX = (int) (width * 0.79);
+        int sunY = (int) (height * 0.19);
+        g.setColor(new Color(255, 195, 133, darkMode ? 25 : 45));
+        g.fill(new Ellipse2D.Double(sunX - sunSize * 0.7, sunY - sunSize * 0.7,
+                sunSize * 2.4, sunSize * 2.4));
+        g.setColor(darkMode ? new Color(255, 194, 139) : new Color(255, 231, 183));
+        g.fill(new Ellipse2D.Double(sunX, sunY, sunSize, sunSize));
+
+        paintCloud(g, width, height, 0.19, 210, 0);
+        paintCloud(g, width, height, 0.32, 155, 1);
+        paintCloud(g, width, height, 0.13, 180, 2);
+
+        paintNeighborhood(g, width, height, skylineBase);
+
+        g.setPaint(new GradientPaint(0, skylineBase, darkMode ? new Color(43, 48, 57) : new Color(110, 108, 104),
+                0, height, darkMode ? new Color(18, 23, 31) : new Color(65, 68, 70)));
+        g.fillRect(0, skylineBase, width, height - skylineBase);
+        g.setColor(darkMode ? new Color(255, 183, 111, 100) : new Color(255, 218, 164, 120));
+        g.fillRect(0, skylineBase, width, 3);
+        g.setColor(darkMode ? new Color(187, 198, 207, 100) : new Color(231, 224, 210, 150));
+        g.fill(new Ellipse2D.Double(width * 0.48, skylineBase + height * 0.08,
+                width * 0.04, height * 0.018));
+        g.fill(new Ellipse2D.Double(width * 0.48, skylineBase + height * 0.15,
+                width * 0.04, height * 0.018));
+        g.setColor(darkMode ? new Color(255, 191, 119, 115) : new Color(255, 237, 197, 150));
+        int lightTravel = (int) (animationFrame * 0.42) % Math.max(1, width + 100);
+        g.fill(new Ellipse2D.Double(lightTravel - 50, skylineBase + height * 0.22, 32, 5));
+        g.fill(new Ellipse2D.Double(width - lightTravel + 50, skylineBase + height * 0.27, 28, 4));
+        g.dispose();
+    }
+
+    private void paintNeighborhood(Graphics2D g, int width, int height, int base) {
+        int tileWidth = Math.max(145, width / 8);
+        int sceneWidth = tileWidth * 6;
+        int offset = (int) (animationFrame * 0.32) % sceneWidth;
+        int firstX = -sceneWidth + offset;
+        int firstIndex = -6;
+        for (int x = firstX; x < width + sceneWidth; x += tileWidth) {
+            int type = Math.floorMod(firstIndex++, 6);
+            switch (type) {
+                case 0, 2, 5 -> drawHouse(g, x, base, tileWidth, height, type);
+                case 1, 4 -> drawOffice(g, x, base, tileWidth, height, type == 4);
+                default -> drawSchool(g, x, base, tileWidth, height);
+            }
         }
-
-        g2.setColor(bg);
-        g2.fillRoundRect(0, 0, w, h, cornerRadius, cornerRadius);
-        g2.setColor(border);
-        g2.drawRoundRect(0, 0, w - 1, h - 1, cornerRadius, cornerRadius);
-
-        g2.setColor(fg);
-        g2.setFont(getFont());
-        FontMetrics fm = g2.getFontMetrics();
-        int tx = (w - fm.stringWidth(getText())) / 2;
-        int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
-        g2.drawString(getText(), tx, ty);
-        g2.dispose();
     }
 
-    @Override
-    public Dimension getPreferredSize() {
-        Dimension d = super.getPreferredSize();
-        return new Dimension(Math.max(d.width + 24, 110), Math.max(d.height + 12, 36));
+    private void drawHouse(Graphics2D g, int x, int base, int tileWidth, int height, int variation) {
+        int houseWidth = tileWidth * (variation == 2 ? 72 : 80) / 100;
+        int houseHeight = (int) (height * (variation == 5 ? 0.15 : 0.18));
+        int left = x + (tileWidth - houseWidth) / 2;
+        int top = base - houseHeight;
+        Color wall = variation % 2 == 0
+                ? (darkMode ? new Color(130, 110, 94) : new Color(225, 194, 151))
+                : (darkMode ? new Color(121, 119, 104) : new Color(205, 204, 174));
+        g.setColor(wall);
+        g.fillRect(left, top + houseHeight / 4, houseWidth, houseHeight * 3 / 4);
+
+        Polygon roof = new Polygon(
+                new int[] { left - 7, left + houseWidth / 2, left + houseWidth + 7 },
+                new int[] { top + houseHeight / 3, top - houseHeight / 5, top + houseHeight / 3 }, 3);
+        g.setColor(darkMode ? new Color(73, 55, 51) : new Color(130, 72, 55));
+        g.fillPolygon(roof);
+
+        int windowSize = Math.max(8, tileWidth / 16);
+        g.setColor(darkMode ? new Color(255, 204, 130) : new Color(248, 224, 172));
+        g.fillRect(left + houseWidth / 6, top + houseHeight / 2, windowSize, windowSize);
+        g.fillRect(left + houseWidth * 4 / 6, top + houseHeight / 2, windowSize, windowSize);
+        g.setColor(darkMode ? new Color(72, 52, 43) : new Color(113, 76, 54));
+        g.fillRect(left + houseWidth / 2 - windowSize / 2, base - houseHeight / 2,
+                windowSize, houseHeight / 2);
     }
-}
 
-class CyberCardPanel extends JPanel {
-    private final Color backgroundColor;
-    private Color borderColor;
-    private final int cornerRadius;
-
-    public CyberCardPanel(Color bgColor, Color borderColor, int cornerRadius) {
-        this.backgroundColor = bgColor;
-        this.borderColor = borderColor;
-        this.cornerRadius = cornerRadius;
-        setOpaque(false);
-    }
-
-    public CyberCardPanel() { this(SafetyTheme.BG_CARD, SafetyTheme.BORDER_SUBTLE, 6); }
-
-    public void setCardBorderColor(Color c) { this.borderColor = c; repaint(); }
-
-    @Override
-    protected void paintComponent(Graphics g) {
-        Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setColor(backgroundColor != null ? backgroundColor : SafetyTheme.BG_CARD);
-        g2.fillRoundRect(0, 0, getWidth(), getHeight(), cornerRadius, cornerRadius);
-        if (borderColor != null) {
-            g2.setColor(borderColor);
-            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, cornerRadius, cornerRadius);
+    private void drawOffice(Graphics2D g, int x, int base, int tileWidth, int height, boolean annex) {
+        int officeWidth = tileWidth * (annex ? 82 : 88) / 100;
+        int officeHeight = (int) (height * (annex ? 0.22 : 0.25));
+        int left = x + (tileWidth - officeWidth) / 2;
+        int top = base - officeHeight;
+        g.setColor(darkMode ? new Color(64, 82, 91) : new Color(135, 158, 158));
+        g.fillRect(left, top, officeWidth, officeHeight);
+        g.setColor(darkMode ? new Color(45, 59, 68) : new Color(98, 125, 132));
+        g.fillRect(left, top, officeWidth, Math.max(6, height / 60));
+        int rows = annex ? 3 : 4;
+        int columns = 3;
+        int windowWidth = Math.max(8, officeWidth / 9);
+        int windowHeight = Math.max(7, officeHeight / 9);
+        g.setColor(darkMode ? new Color(255, 202, 132) : new Color(255, 231, 183));
+        for (int row = 0; row < rows; row++) {
+            for (int column = 0; column < columns; column++) {
+                int windowX = left + officeWidth / 8 + column * (officeWidth / 3);
+                int windowY = top + officeHeight / 6 + row * (officeHeight / (rows + 1));
+                g.fillRect(windowX, windowY, windowWidth, windowHeight);
+            }
         }
-        g2.dispose();
-        super.paintComponent(g);
+        g.setColor(darkMode ? new Color(43, 51, 56) : new Color(81, 103, 105));
+        g.fillRect(left + officeWidth / 2 - windowWidth / 2, base - officeHeight / 4,
+                windowWidth, officeHeight / 4);
+    }
+
+    private void drawSchool(Graphics2D g, int x, int base, int tileWidth, int height) {
+        int schoolWidth = tileWidth * 94 / 100;
+        int schoolHeight = (int) (height * 0.21);
+        int left = x + (tileWidth - schoolWidth) / 2;
+        int top = base - schoolHeight;
+        g.setColor(darkMode ? new Color(177, 139, 94) : new Color(232, 198, 139));
+        g.fillRect(left, top + schoolHeight / 5, schoolWidth, schoolHeight * 4 / 5);
+        g.setColor(darkMode ? new Color(91, 67, 55) : new Color(154, 87, 60));
+        g.fillRect(left - 4, top + schoolHeight / 5 - 5, schoolWidth + 8, 8);
+
+        g.setColor(darkMode ? new Color(239, 226, 198) : new Color(76, 64, 52));
+        g.setFont(new Font(SagipTheme.FONT_FAMILY, Font.BOLD, Math.max(8, height / 85)));
+        String sign = "SCHOOL";
+        int signWidth = g.getFontMetrics().stringWidth(sign);
+        g.drawString(sign, left + (schoolWidth - signWidth) / 2, top + schoolHeight / 2);
+
+        g.setColor(darkMode ? new Color(255, 204, 128) : new Color(255, 232, 180));
+        int windowWidth = Math.max(7, tileWidth / 18);
+        int windowY = top + schoolHeight * 3 / 5;
+        g.fillRect(left + schoolWidth / 8, windowY, windowWidth, windowWidth);
+        g.fillRect(left + schoolWidth * 7 / 8 - windowWidth, windowY, windowWidth, windowWidth);
+        g.setColor(darkMode ? new Color(87, 63, 48) : new Color(118, 78, 48));
+        g.fillRect(left + schoolWidth / 2 - windowWidth, base - schoolHeight / 3,
+                windowWidth * 2, schoolHeight / 3);
+    }
+
+    private void paintCloud(Graphics2D g, int width, int height, double yFraction,
+                            int cloudWidth, int cloudIndex) {
+        double travel = (animationFrame * (0.035 + cloudIndex * 0.008) + cloudIndex * width * 0.39)
+                % (width + cloudWidth * 2.0);
+        int x = (int) (travel - cloudWidth);
+        int y = (int) (height * yFraction);
+        int cloudHeight = Math.max(24, cloudWidth / 5);
+        Color cloud = darkMode ? new Color(228, 218, 204, 38) : new Color(255, 255, 255, 92);
+        g.setColor(cloud);
+        g.fill(new Ellipse2D.Double(x, y + cloudHeight * 0.18, cloudWidth * 0.58, cloudHeight * 0.72));
+        g.fill(new Ellipse2D.Double(x + cloudWidth * 0.20, y, cloudWidth * 0.48, cloudHeight));
+        g.fill(new Ellipse2D.Double(x + cloudWidth * 0.45, y + cloudHeight * 0.18,
+                cloudWidth * 0.55, cloudHeight * 0.72));
     }
 }
 
-class RiskBadge extends JLabel {
-    private RiskLevel riskLevel;
+class ContrastPanel extends JPanel {
+    private static final long serialVersionUID = 1L;
+    private final boolean darkMode;
 
-    public RiskBadge(RiskLevel level) {
-        this.riskLevel = level;
-        setFont(SafetyTheme.FONT_BADGE);
+    public ContrastPanel(boolean darkMode) {
+        this.darkMode = darkMode;
         setOpaque(false);
     }
 
-    public RiskBadge(String text, RiskLevel level) {
-        super(text);
-        this.riskLevel = level;
-        setFont(SafetyTheme.FONT_BADGE);
-        setOpaque(false);
-    }
-
-    public void setRiskLevel(RiskLevel level) {
-        this.riskLevel = level;
-        revalidate();
-        repaint();
-    }
-
-    private String resolveLabel() {
-        if (riskLevel != null) return riskLevel.getLabel();
-        return (getText() != null && !getText().isEmpty()) ? getText() : "● NOMINAL";
-    }
-
     @Override
-    protected void paintComponent(Graphics g) {
-        Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        int w = getWidth(), h = getHeight();
-        RiskLevel rl = riskLevel != null ? riskLevel : RiskLevel.LOW;
-
-        g2.setColor(rl.isInverted() ? SafetyTheme.MONO_WHITE : rl.getBgFill());
-        g2.fillRoundRect(0, 0, w, h, 4, 4);
-
-        g2.setColor(rl.getStrokeColor());
-        g2.setStroke(new BasicStroke(rl.isInverted() ? 1.5f : 1.2f));
-        g2.drawRoundRect(0, 0, w - 1, h - 1, 4, 4);
-
-        String text = resolveLabel();
-        g2.setFont(getFont());
-        FontMetrics fm = g2.getFontMetrics();
-        g2.setColor(rl.getTextColor());
-        g2.drawString(text, (w - fm.stringWidth(text)) / 2, (h - fm.getHeight()) / 2 + fm.getAscent());
-        g2.dispose();
-    }
-
-    @Override
-    public Dimension getPreferredSize() {
-        String text = resolveLabel();
-        FontMetrics fm = getFontMetrics(getFont());
-        return new Dimension(fm.stringWidth(text) + 20, Math.max(fm.getHeight() + 6, 22));
-    }
-}
-
-class MonochromeScrollBarUI extends BasicScrollBarUI {
-    @Override
-    protected void configureScrollBarColors() {
-        this.thumbColor = SafetyTheme.MONO_SLATE;
-        this.trackColor = SafetyTheme.BG_PANEL;
-    }
-
-    @Override
-    protected JButton createDecreaseButton(int orientation) { return zeroButton(); }
-
-    @Override
-    protected JButton createIncreaseButton(int orientation) { return zeroButton(); }
-
-    private JButton zeroButton() {
-        JButton b = new JButton();
-        b.setPreferredSize(new Dimension(0, 0));
-        return b;
-    }
-}
-
-class HudGraphicPanel extends JPanel {
-    private double scanAngle = 0.0;
-
-    public HudGraphicPanel() {
-        setOpaque(false);
-        setPreferredSize(new Dimension(340, 195));
-        new javax.swing.Timer(40, e -> {
-            scanAngle += 0.035;
-            if (scanAngle > Math.PI * 2) scanAngle -= Math.PI * 2;
-            repaint();
-        }).start();
-    }
-
-    @Override
-    protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
-        Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        int cx = getWidth() / 2, cy = getHeight() / 2;
-        int radius = Math.min(getWidth(), getHeight()) / 2 - 14;
-
-        // Concentric monochrome calibration rings
-        g2.setColor(new Color(82, 82, 91, 140));
-        g2.drawOval(cx - radius, cy - radius, radius * 2, radius * 2);
-        g2.drawOval(cx - radius * 2 / 3, cy - radius * 2 / 3, radius * 4 / 3, radius * 4 / 3);
-        g2.drawOval(cx - radius / 3, cy - radius / 3, radius * 2 / 3, radius * 2 / 3);
-
-        // Crosshair axes
-        g2.setColor(new Color(161, 161, 170, 60));
-        g2.drawLine(cx - radius - 8, cy, cx + radius + 8, cy);
-        g2.drawLine(cx, cy - radius - 8, cx, cy + radius + 8);
-
-        // Sweep vector
-        int sx = (int) (cx + Math.cos(scanAngle) * radius);
-        int sy = (int) (cy + Math.sin(scanAngle) * radius);
-        g2.setColor(new Color(250, 250, 250, 210));
-        g2.setStroke(new BasicStroke(1.8f));
-        g2.drawLine(cx, cy, sx, sy);
-
-        // Central optical aperture
-        g2.setColor(SafetyTheme.BG_DARKEST);
-        g2.fillOval(cx - 14, cy - 14, 28, 28);
-        g2.setColor(SafetyTheme.MONO_WHITE);
-        g2.setStroke(new BasicStroke(1.4f));
-        g2.drawOval(cx - 14, cy - 14, 28, 28);
-        g2.fillOval(cx - 4, cy - 4, 8, 8);
-
-        g2.dispose();
+    protected void paintComponent(Graphics graphics) {
+        Graphics2D g = (Graphics2D) graphics.create();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setColor(darkMode ? new Color(12, 19, 27, 190) : new Color(255, 249, 235, 208));
+        g.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+        g.setColor(darkMode ? new Color(255, 255, 255, 42) : new Color(65, 47, 33, 55));
+        g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
+        g.dispose();
+        super.paintComponent(graphics);
     }
 }
 
 /**
- * Renders live hardware webcam frames + high-contrast monochromatic YOLOv8 HUD reticles.
+ * Renders live natural RGB webcam frames with color-coded YOLO risk bounding boxes
+ * and risk lists below each box, or the CameraPlaceholder graphic when in standby.
  */
 class CameraViewportPanel extends JPanel {
+    private final boolean darkMode;
     private BufferedImage currentFrame = null;
     private boolean isCameraConnected = false;
     private boolean isAiDetectionActive = true;
-    private double currentFps = 0.0;
-    private String engineTelemetry = "YOLOv8";
+    private boolean showPlaceholder = true;
+    private String statusHint = "Live camera view and hazard boxes will appear here.";
     private List<HazardItem> currentHazards = new ArrayList<>();
     private DisasterScenario currentScenario;
-    private final SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss");
-    private long pulseTick = 0;
 
-    public CameraViewportPanel() {
-        setBackground(SafetyTheme.BG_DARKEST);
-        setBorder(BorderFactory.createLineBorder(SafetyTheme.BORDER_SUBTLE, 1));
-        setOpaque(true);
+    public CameraViewportPanel(boolean darkMode) {
+        this.darkMode = darkMode;
+        setOpaque(false);
+        setMinimumSize(new Dimension(360, 260));
+        setPreferredSize(new Dimension(800, 480));
     }
 
-    public void updateFeed(BufferedImage frame, double fps, boolean cameraConnected, boolean aiActive,
-                           String telemetry, List<HazardItem> hazards, DisasterScenario scenario) {
+    public void setStandby(String hint) {
+        this.showPlaceholder = true;
+        this.currentFrame = null;
+        this.statusHint = (hint != null && !hint.isEmpty())
+                ? hint
+                : "Live camera view and hazard boxes will appear here.";
+        repaint();
+    }
+
+    public void updateFeed(BufferedImage frame, boolean cameraConnected, boolean aiActive,
+                           List<HazardItem> hazards, DisasterScenario scenario, String fallbackHint) {
         this.currentFrame = frame;
-        this.currentFps = fps;
         this.isCameraConnected = cameraConnected;
         this.isAiDetectionActive = aiActive;
-        this.engineTelemetry = telemetry != null ? telemetry : "YOLOv8";
         this.currentHazards = (hazards != null) ? hazards : new ArrayList<>();
         this.currentScenario = scenario;
-        this.pulseTick++;
+        this.showPlaceholder = (frame == null);
+        if (fallbackHint != null && !fallbackHint.isEmpty()) {
+            this.statusHint = fallbackHint;
+        }
         repaint();
     }
 
@@ -1409,26 +1577,69 @@ class CameraViewportPanel extends JPanel {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
         int w = getWidth(), h = getHeight();
 
-        if (currentFrame != null) {
+        if (!showPlaceholder && currentFrame != null) {
             g2.drawImage(currentFrame, 0, 0, w, h, null);
+
+            if (isCameraConnected && isAiDetectionActive && !currentHazards.isEmpty()) {
+                drawYoloBoxes(g2, w, h);
+            }
         } else {
-            g2.setColor(SafetyTheme.BG_DARKEST);
-            g2.fillRect(0, 0, w, h);
+            drawPlaceholder(g2, w, h);
         }
 
-        if (isCameraConnected && isAiDetectionActive && !currentHazards.isEmpty()) {
-            drawYoloBoxes(g2, w, h);
-        }
+        // Accent border
+        g2.setColor(SagipTheme.accent(darkMode));
+        g2.setStroke(new BasicStroke(2f));
+        g2.drawRect(1, 1, w - 3, h - 3);
 
         g2.dispose();
     }
 
-    private void drawYoloBoxes(Graphics2D g2, int w, int h) {
-        Stroke dashedStroke = new BasicStroke(1.2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{5f, 4f}, 0f);
+    private void drawPlaceholder(Graphics2D g2, int w, int h) {
+        g2.setColor(SagipTheme.preview(darkMode));
+        g2.fillRect(0, 0, w, h);
 
+        Color muted = SagipTheme.muted(darkMode);
+        g2.setColor(new Color(muted.getRed(), muted.getGreen(), muted.getBlue(), 26));
+        g2.setStroke(new BasicStroke(1.2f));
+        for (int x = -h; x < w; x += 28) {
+            g2.drawLine(x, h, x + h, 0);
+        }
+
+        int cx = w / 2;
+        int cy = h / 2 - 30;
+        g2.setStroke(new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(muted);
+        g2.draw(new RoundRectangle2D.Float(cx - 30, cy - 16, 60, 40, 8, 8));
+        g2.draw(new Ellipse2D.Float(cx - 12, cy - 8, 24, 24));
+        g2.drawLine(cx - 10, cy - 21, cx + 10, cy - 21);
+
+        drawCentered(g2, "CAMERA PREVIEW", new Font(SagipTheme.FONT_FAMILY, Font.BOLD, 20), muted, w, cy + 62);
+        drawCentered(g2, statusHint, new Font(SagipTheme.FONT_FAMILY, Font.PLAIN, 15), SagipTheme.text(darkMode), w, cy + 88);
+    }
+
+    private void drawCentered(Graphics2D g, String s, Font f, Color c, int width, int baselineY) {
+        g.setFont(f);
+        g.setColor(c);
+        FontMetrics fm = g.getFontMetrics();
+        g.drawString(s, (width - fm.stringWidth(s)) / 2, baselineY);
+    }
+
+    private String resolveHazardTag(String objName) {
+        String n = objName.toUpperCase();
+        if (n.contains("OVEN") || n.contains("TOASTER") || n.contains("MICROWAVE")
+                || n.contains("LAPTOP") || n.contains("CELL PHONE") || n.contains("TV")
+                || n.contains("BOOK") || n.contains("BACKPACK") || n.contains("HAIR DRIER")) {
+            return "F";
+        }
+        return "E";
+    }
+
+    private void drawYoloBoxes(Graphics2D g2, int w, int h) {
         for (HazardItem item : currentHazards) {
             Rectangle2D.Double norm = item.getNormalizedBoundingBox();
             int bx = (int) (norm.x * w), by = (int) (norm.y * h);
@@ -1438,24 +1649,16 @@ class CameraViewportPanel extends JPanel {
                     ? currentScenario.getHazardRisk(item)
                     : RiskLevel.MODERATE;
 
-            Color strokeCol = risk.getStrokeColor();
+            Color boxCol = risk.getColor(darkMode);
 
-            // Frame stroke (crisp solid border)
-            g2.setColor(new Color(strokeCol.getRed(), strokeCol.getGreen(), strokeCol.getBlue(), 220));
-            g2.setStroke(risk == RiskLevel.LOW ? dashedStroke : new BasicStroke(1.2f));
+            // Crisp risk-colored bounding box
+            g2.setColor(boxCol);
+            g2.setStroke(new BasicStroke(2.2f));
             g2.drawRect(bx, by, bw, bh);
 
-            // Double outer frame for CRITICAL hazards
-            if (risk == RiskLevel.CRITICAL) {
-                g2.setColor(SafetyTheme.MONO_WHITE);
-                g2.setStroke(new BasicStroke(1.0f));
-                g2.drawRect(bx - 3, by - 3, bw + 6, bh + 6);
-            }
-
-            // Precision corner brackets
+            // Corner brackets
             int bLen = Math.min(18, Math.min(bw / 3, bh / 3));
-            g2.setColor(strokeCol);
-            g2.setStroke(new BasicStroke(risk.getStrokeWidth()));
+            g2.setStroke(new BasicStroke(risk.getStrokeWidth() + 0.6f));
             g2.drawLine(bx, by, bx + bLen, by);
             g2.drawLine(bx, by, bx, by + bLen);
             g2.drawLine(bx + bw, by, bx + bw - bLen, by);
@@ -1465,268 +1668,566 @@ class CameraViewportPanel extends JPanel {
             g2.drawLine(bx + bw, by + bh, bx + bw - bLen, by + bh);
             g2.drawLine(bx + bw, by + bh, bx + bw, by + bh - bLen);
 
-            // Risk profile list below the detected box
+            // Risk list directly below the detected box
             String objName = item.getObjectName();
-            String title = String.format("%s (%d%%)", objName, item.getConfidencePercentage());
+            String tag = resolveHazardTag(objName);
+            String title = String.format("[%s] %s (%d%%)", tag, objName, item.getConfidencePercentage());
             String[] risks = new String[]{
                 "may fall during an earthquake",
                 "Uneven surface that may caused floods",
                 "combustible objects"
             };
 
-            g2.setFont(SafetyTheme.FONT_MONO_SMALL);
+            g2.setFont(SagipTheme.FONT_MONO_SMALL);
             FontMetrics fm = g2.getFontMetrics();
             int maxLineW = fm.stringWidth(title);
             for (String r : risks) {
-                int rw = fm.stringWidth("• " + r);
+                int rw = fm.stringWidth("\u2022 " + r);
                 if (rw > maxLineW) maxLineW = rw;
             }
 
             int cardPadX = 10, cardPadY = 8, lineH = 16;
-            int cardW = maxLineW + cardPadX * 2 + 10;
+            int cardW = maxLineW + cardPadX * 2 + 12;
             int cardH = cardPadY * 2 + 22 + (risks.length + 1) * lineH;
 
             int cardX = Math.max(4, Math.min(bx, w - cardW - 8));
             int cardY = (by + bh + cardH + 6 <= h) ? (by + bh + 6) : Math.max(4, by - cardH - 6);
 
-            // Card background & border
-            g2.setColor(new Color(9, 9, 11, 238));
+            g2.setColor(new Color(29, 34, 36, 236));
             g2.fillRect(cardX, cardY, cardW, cardH);
-            g2.setColor(SafetyTheme.MONO_WHITE);
-            g2.setStroke(new BasicStroke(1.2f));
+            g2.setColor(boxCol);
+            g2.setStroke(new BasicStroke(1.5f));
             g2.drawRect(cardX, cardY, cardW, cardH);
 
-            // Header banner
-            g2.setColor(SafetyTheme.MONO_WHITE);
+            g2.setColor(boxCol);
             g2.fillRect(cardX, cardY, cardW, 22);
-            g2.setColor(SafetyTheme.BG_DARKEST);
-            g2.setFont(SafetyTheme.FONT_MONO_MED);
+            g2.setColor(new Color(29, 34, 36));
+            g2.setFont(SagipTheme.FONT_MONO_MED);
             g2.drawString(title, cardX + cardPadX, cardY + 16);
 
-            // Risks header and bullet points
-            g2.setColor(SafetyTheme.TEXT_SECONDARY);
-            g2.setFont(SafetyTheme.FONT_MONO_SMALL);
+            g2.setColor(new Color(205, 198, 180));
+            g2.setFont(SagipTheme.FONT_MONO_SMALL);
             int textY = cardY + 22 + 16;
             g2.drawString("risks:", cardX + cardPadX, textY);
             textY += lineH;
 
-            g2.setColor(SafetyTheme.TEXT_PRIMARY);
+            g2.setColor(new Color(247, 241, 226));
             for (String r : risks) {
-                g2.drawString("• " + r, cardX + cardPadX, textY);
+                g2.drawString("\u2022 " + r, cardX + cardPadX, textY);
                 textY += lineH;
             }
         }
     }
 }
 
-// ------------------------------------------------------------------------------
-// 5. BASE & CONCRETE SCREEN IMPLEMENTATIONS (ABSTRACTION & INHERITANCE)
-// ------------------------------------------------------------------------------
-abstract class BaseScreenPanel extends JPanel {
-    protected final ScreenNavigator navigator;
-
-    public BaseScreenPanel(ScreenNavigator navigator) {
-        this.navigator = navigator;
-        setLayout(new BorderLayout());
-        setBackground(SafetyTheme.BG_DARKEST);
-    }
-
-    protected abstract void setupUI();
-    public abstract void onScreenDisplayed();
-    public abstract void onScreenHidden();
-}
-
 /**
- * PAGE 1: MONOCHROMATIC MAIN MENU SCREEN
+ * SAGIP CameraPage with live camera feed, Start/Stop + Save Scan controls, and Legend sidebar.
  */
-class MainMenuPanel extends BaseScreenPanel {
-    public MainMenuPanel(ScreenNavigator nav) {
-        super(nav);
-        setupUI();
-    }
+class CameraPage extends JPanel implements DetectionListener {
+    private static final long serialVersionUID = 1L;
+    private static final int LEGEND_WIDTH = 380;
+    private static final int LEGEND_MIN_WIDTH = 360;
 
-    @Override
-    protected void setupUI() {
-        setLayout(new BorderLayout());
-
-        // Top Bar
-        JPanel bar = new JPanel(new BorderLayout());
-        bar.setOpaque(false);
-        bar.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, SafetyTheme.BORDER_SUBTLE),
-            BorderFactory.createEmptyBorder(14, 28, 14, 28)
-        ));
-        JLabel title = new JLabel("DISASTER HAZARD DETECTION SYSTEM");
-        title.setFont(SafetyTheme.FONT_BODY_BOLD);
-        title.setForeground(SafetyTheme.TEXT_PRIMARY);
-        JLabel ready = new JLabel("OPTICAL SENSOR · YOLOv8 VISION");
-        ready.setFont(SafetyTheme.FONT_MONO_SMALL);
-        ready.setForeground(SafetyTheme.TEXT_SECONDARY);
-        bar.add(title, BorderLayout.WEST);
-        bar.add(ready, BorderLayout.EAST);
-        add(bar, BorderLayout.NORTH);
-
-        // Center Stage
-        JPanel center = new JPanel(new GridBagLayout());
-        center.setOpaque(false);
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(8, 24, 8, 24);
-        gbc.gridx = 0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-
-        JPanel titleBox = new JPanel();
-        titleBox.setLayout(new BoxLayout(titleBox, BoxLayout.Y_AXIS));
-        titleBox.setOpaque(false);
-
-        JLabel tag = new JLabel("SEISMIC  ·  FLOOD  ·  FIRE RISK ASSESSMENT", SwingConstants.CENTER);
-        tag.setFont(SafetyTheme.FONT_MONO_SMALL);
-        tag.setForeground(SafetyTheme.TEXT_MUTED);
-        tag.setAlignmentX(CENTER_ALIGNMENT);
-
-        JLabel mainTitle = new JLabel("Disaster Hazard Detection System", SwingConstants.CENTER);
-        mainTitle.setFont(SafetyTheme.FONT_TITLE_LARGE);
-        mainTitle.setForeground(SafetyTheme.TEXT_PRIMARY);
-        mainTitle.setAlignmentX(CENTER_ALIGNMENT);
-
-        JLabel sub = new JLabel("Real-Time Hardware Camera & YOLOv8 Structural Vulnerability Analysis", SwingConstants.CENTER);
-        sub.setFont(SafetyTheme.FONT_TITLE_SMALL);
-        sub.setForeground(SafetyTheme.MONO_SILVER);
-        sub.setAlignmentX(CENTER_ALIGNMENT);
-
-        JLabel desc1 = new JLabel("Captures live optical camera frames and executes YOLOv8 neural object localization", SwingConstants.CENTER);
-        desc1.setFont(SafetyTheme.FONT_BODY);
-        desc1.setForeground(SafetyTheme.TEXT_SECONDARY);
-        desc1.setAlignmentX(CENTER_ALIGNMENT);
-
-        JLabel desc2 = new JLabel("to evaluate physical hazards across seismic, flood, and thermal emergency scenarios.", SwingConstants.CENTER);
-        desc2.setFont(SafetyTheme.FONT_BODY);
-        desc2.setForeground(SafetyTheme.TEXT_SECONDARY);
-        desc2.setAlignmentX(CENTER_ALIGNMENT);
-
-        titleBox.add(tag);
-        titleBox.add(Box.createVerticalStrut(8));
-        titleBox.add(mainTitle);
-        titleBox.add(Box.createVerticalStrut(6));
-        titleBox.add(sub);
-        titleBox.add(Box.createVerticalStrut(12));
-        titleBox.add(desc1);
-        titleBox.add(Box.createVerticalStrut(2));
-        titleBox.add(desc2);
-
-        gbc.gridy = 0;
-        center.add(titleBox, gbc);
-
-        gbc.gridy = 1;
-        gbc.fill = GridBagConstraints.NONE;
-        center.add(new HudGraphicPanel(), gbc);
-
-        gbc.gridy = 2;
-        CyberButton startBtn = new CyberButton("START LIVE DETECTION", CyberButton.ButtonStyle.PRIMARY);
-        startBtn.setFont(new Font("SansSerif", Font.BOLD, 14));
-        startBtn.setPreferredSize(new Dimension(260, 48));
-        startBtn.setCornerRadius(4);
-        startBtn.addActionListener(e -> navigator.navigateToLiveDetection());
-        center.add(startBtn, gbc);
-
-        gbc.gridy = 3;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        JPanel cardsRow = new JPanel(new GridLayout(1, 3, 18, 0));
-        cardsRow.setOpaque(false);
-        cardsRow.setPreferredSize(new Dimension(880, 112));
-
-        cardsRow.add(createCard("01. YOLOv8 Neural Vision", "80-class ONNX object recognition with Non-Maximum Suppression and live bounding coordinates."));
-        cardsRow.add(createCard("02. Hardware Camera Feed", "Direct webcam stream acquisition at 30 FPS with optional monochrome optical filtering."));
-        cardsRow.add(createCard("03. Multi-Hazard Risk Matrix", "Evaluates detected physical objects dynamically against Earthquake, Flood, and Fire protocols."));
-        center.add(cardsRow, gbc);
-
-        add(center, BorderLayout.CENTER);
-
-        // Footer
-        JPanel footer = new JPanel(new BorderLayout());
-        footer.setOpaque(false);
-        footer.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(1, 0, 0, 0, SafetyTheme.BORDER_SUBTLE),
-            BorderFactory.createEmptyBorder(10, 28, 12, 28)
-        ));
-        JLabel fLeft = new JLabel("Disaster Mitigation & Environmental Safety Monitoring");
-        fLeft.setFont(SafetyTheme.FONT_BODY_SMALL);
-        fLeft.setForeground(SafetyTheme.TEXT_MUTED);
-        JLabel fRight = new JLabel("Real-Time Hazard Assessment");
-        fRight.setFont(SafetyTheme.FONT_MONO_SMALL);
-        fRight.setForeground(SafetyTheme.TEXT_MUTED);
-        footer.add(fLeft, BorderLayout.WEST);
-        footer.add(fRight, BorderLayout.EAST);
-        add(footer, BorderLayout.SOUTH);
-    }
-
-    private CyberCardPanel createCard(String title, String desc) {
-        CyberCardPanel card = new CyberCardPanel(SafetyTheme.BG_PANEL, SafetyTheme.BORDER_SUBTLE, 6);
-        card.setLayout(new BorderLayout(0, 6));
-        card.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
-        JLabel t = new JLabel(title);
-        t.setFont(SafetyTheme.FONT_BODY_BOLD);
-        t.setForeground(SafetyTheme.MONO_WHITE);
-        JLabel d = new JLabel("<html><body style='width: 220px; line-height: 1.35; color: #A1A1AA;'>" + desc + "</body></html>");
-        d.setFont(SafetyTheme.FONT_BODY_SMALL);
-        card.add(t, BorderLayout.NORTH);
-        card.add(d, BorderLayout.CENTER);
-        return card;
-    }
-
-    @Override public void onScreenDisplayed() {}
-    @Override public void onScreenHidden() {}
-}
-
-/**
- * PAGE 2: MONOCHROMATIC LIVE HAZARD DETECTION SCREEN
- */
-class LiveDetectionPanel extends BaseScreenPanel implements DetectionListener {
+    private final boolean darkMode;
+    private final DisasterHazardSystemApp app;
     private final CameraDetectionEngine engine;
-    private CameraViewportPanel cameraViewport;
-    private final DisasterScenario[] availableScenarios;
-    private DisasterScenario activeScenario;
+    private final DisasterScenario activeScenario;
 
-    public LiveDetectionPanel(ScreenNavigator nav) {
-        super(nav);
+    private final JPanel tabArea;
+    private final JButton backButton;
+    private final CameraViewportPanel cameraView;
+    private final JButton startStopButton;
+    private final JButton saveButton;
+    private final JLabel statusLabel;
+    private final JLabel detectionsLabel;
+
+    private boolean running = false;
+
+    public CameraPage(boolean darkMode, DisasterHazardSystemApp app) {
+        this.darkMode = darkMode;
+        this.app = app;
         this.engine = CameraDetectionEngine.getInstance();
-        this.availableScenarios = new DisasterScenario[] {
-            new EarthquakeScenario(),
-            new FloodScenario(),
-            new FireScenario()
-        };
-        this.activeScenario = availableScenarios[0];
-        setupUI();
-    }
+        this.activeScenario = new EarthquakeScenario();
 
-    @Override
-    protected void setupUI() {
         setLayout(new BorderLayout());
-        cameraViewport = new CameraViewportPanel();
-        add(cameraViewport, BorderLayout.CENTER);
+        setBackground(SagipTheme.background(darkMode));
+
+        tabArea = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        tabArea.setOpaque(false);
+        backButton = pageButton("BACK TO MENU");
+        backButton.setVisible(false);
+        tabArea.add(backButton);
+
+        cameraView = new CameraViewportPanel(darkMode);
+        startStopButton = pageButton("START CAMERA");
+        saveButton = pageButton("SAVE SCAN");
+        saveButton.setEnabled(false);
+
+        statusLabel = SagipTheme.label("", 13, SagipTheme.muted(darkMode), Font.BOLD);
+        detectionsLabel = SagipTheme.label("", 14, SagipTheme.text(darkMode), Font.BOLD);
+
+        add(buildHeader(), BorderLayout.NORTH);
+        add(buildContent(), BorderLayout.CENTER);
+        add(buildFooter(), BorderLayout.SOUTH);
+
+        startStopButton.addActionListener(event -> {
+            if (running) {
+                stopCamera();
+            } else {
+                startCamera();
+            }
+        });
+
+        saveButton.addActionListener(event -> {
+            BufferedImage frame = engine.getCurrentFrame();
+            List<HazardItem> hazards = engine.getDetectedHazards();
+            if (frame != null) {
+                app.saveAssessment(frame, hazards, activeScenario.evaluateOverallRisk(hazards));
+                saveButton.setText("SAVED");
+                javax.swing.Timer reset = new javax.swing.Timer(1500, e -> saveButton.setText("SAVE SCAN"));
+                reset.setRepeats(false);
+                reset.start();
+            }
+        });
+
+        setCameraRunning(false);
+        setDetectionCount(0);
     }
 
-    @Override
-    public void onFrameUpdated(BufferedImage frame, double fps, boolean isLive, String telemetry) {
-        cameraViewport.updateFeed(frame, fps, isLive, engine.isAiDetectionActive(), telemetry, engine.getDetectedHazards(), activeScenario);
+    public void startCamera() {
+        setCameraRunning(true);
+        engine.startCameraStream();
     }
 
-    @Override
-    public void onHazardsDetected(List<HazardItem> hazards) {
-        // Hazard bounding boxes and risks are rendered directly on the camera viewport
+    public void stopCamera() {
+        setCameraRunning(false);
+        engine.stopCameraStream();
+        cameraView.setStandby("Live camera view and hazard boxes will appear here.");
+        setDetectionCount(0);
     }
 
-    @Override
-    public void onCameraStateChanged(boolean isConnected, boolean isDetecting) {
-        // Camera connectivity is visualized on the viewport
+    public void setBackAction(Runnable action) {
+        for (ActionListener existing : backButton.getActionListeners()) {
+            backButton.removeActionListener(existing);
+        }
+        if (action != null) {
+            backButton.addActionListener(event -> action.run());
+        }
+        backButton.setVisible(action != null);
     }
 
-    @Override
+    public void setDetectionCount(int count) {
+        detectionsLabel.setText(String.format("DETECTIONS  %02d", count));
+    }
+
+    public void setCameraRunning(boolean isRunning) {
+        this.running = isRunning;
+        saveButton.setEnabled(isRunning);
+        if (isRunning) {
+            startStopButton.setText("STOP CAMERA");
+            setButtonBorder(startStopButton, RiskLevel.CRITICAL.getColor(darkMode));
+            statusLabel.setText("\u25CF LIVE");
+            statusLabel.setForeground(RiskLevel.LOW.getColor(darkMode));
+        } else {
+            startStopButton.setText("START CAMERA");
+            setButtonBorder(startStopButton, SagipTheme.accent(darkMode));
+            statusLabel.setText("\u25CF STANDBY");
+            statusLabel.setForeground(SagipTheme.muted(darkMode));
+        }
+    }
+
     public void onScreenDisplayed() {
         engine.addListener(this);
     }
 
-    @Override
     public void onScreenHidden() {
         engine.removeListener(this);
     }
+
+    @Override
+    public void onFrameUpdated(BufferedImage frame, double currentFps, boolean isLive, String engineTelemetry) {
+        if (!running) {
+            cameraView.setStandby("Live camera view and hazard boxes will appear here.");
+            return;
+        }
+        cameraView.updateFeed(frame, isLive, engine.isAiDetectionActive(),
+                engine.getDetectedHazards(), activeScenario, engine.getHardwareStatusMessage());
+    }
+
+    @Override
+    public void onHazardsDetected(List<HazardItem> hazards) {
+        if (running) {
+            setDetectionCount(hazards.size());
+        }
+    }
+
+    @Override
+    public void onCameraStateChanged(boolean isConnected, boolean isDetecting) {
+        if (!running) return;
+        statusLabel.setText(isConnected ? "\u25CF LIVE" : "\u25CF CONNECTING");
+        statusLabel.setForeground(isConnected ? RiskLevel.LOW.getColor(darkMode) : SagipTheme.accent(darkMode));
+    }
+
+    private JComponent buildHeader() {
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(SagipTheme.surface(darkMode));
+        header.setBorder(new EmptyBorder(18, 24, 18, 24));
+
+        JPanel titles = new JPanel();
+        titles.setOpaque(false);
+        titles.setLayout(new BoxLayout(titles, BoxLayout.Y_AXIS));
+        titles.add(SagipTheme.label("SAGIP", 20, SagipTheme.text(darkMode), Font.BOLD));
+        titles.add(Box.createVerticalStrut(3));
+        titles.add(SagipTheme.label("Camera assessment", 13, SagipTheme.muted(darkMode), Font.PLAIN));
+
+        JPanel tabHolder = new JPanel(new GridBagLayout());
+        tabHolder.setOpaque(false);
+        tabHolder.add(tabArea);
+
+        header.add(titles, BorderLayout.WEST);
+        header.add(tabHolder, BorderLayout.EAST);
+        return header;
+    }
+
+    private JComponent buildFooter() {
+        JPanel footer = new JPanel(new BorderLayout());
+        footer.setBackground(SagipTheme.surface(darkMode));
+        footer.setBorder(new EmptyBorder(10, 24, 10, 24));
+        footer.add(SagipTheme.label("SAGIP  \u2022  FIRE & EARTHQUAKE PREPAREDNESS", 11, SagipTheme.muted(darkMode), Font.BOLD),
+                BorderLayout.WEST);
+        return footer;
+    }
+
+    private JComponent buildContent() {
+        JPanel content = new JPanel(new GridBagLayout());
+        content.setOpaque(false);
+        content.setBorder(new EmptyBorder(24, 30, 24, 30));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weighty = 1;
+
+        gbc.gridx = 0;
+        gbc.weightx = 4;
+        gbc.insets = new Insets(0, 0, 0, 20);
+        content.add(buildCameraCard(), gbc);
+
+        gbc.gridx = 1;
+        gbc.weightx = 1;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        content.add(buildLegendCard(), gbc);
+
+        return content;
+    }
+
+    private JComponent buildCameraCard() {
+        Card card = new Card();
+        card.setLayout(new BorderLayout(0, 14));
+        card.setBorder(new EmptyBorder(18, 20, 18, 20));
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setOpaque(false);
+
+        JPanel titles = new JPanel();
+        titles.setOpaque(false);
+        titles.setLayout(new BoxLayout(titles, BoxLayout.Y_AXIS));
+        JLabel eyebrow = SagipTheme.label("LIVE CAMERA FEED", 12, SagipTheme.accent(darkMode), Font.BOLD);
+        JLabel title = SagipTheme.label("Live hazard detection", 22, SagipTheme.text(darkMode), Font.BOLD);
+        JLabel sub = SagipTheme.label("Environmental risk assessment", 13, SagipTheme.muted(darkMode), Font.PLAIN);
+        eyebrow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        sub.setAlignmentX(Component.LEFT_ALIGNMENT);
+        titles.add(eyebrow);
+        titles.add(Box.createVerticalStrut(3));
+        titles.add(title);
+        titles.add(Box.createVerticalStrut(3));
+        titles.add(sub);
+
+        header.add(titles, BorderLayout.WEST);
+        header.add(statusLabel, BorderLayout.EAST);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        actions.setOpaque(false);
+        actions.add(saveButton);
+        actions.add(startStopButton);
+
+        JPanel footer = new JPanel(new BorderLayout());
+        footer.setOpaque(false);
+        footer.add(detectionsLabel, BorderLayout.WEST);
+        footer.add(actions, BorderLayout.EAST);
+
+        card.add(header, BorderLayout.NORTH);
+        card.add(cameraView, BorderLayout.CENTER);
+        card.add(footer, BorderLayout.SOUTH);
+        return card;
+    }
+
+    private JComponent buildLegendCard() {
+        Card card = new Card();
+        card.setLayout(new BorderLayout(0, 8));
+        card.setBorder(new EmptyBorder(18, 20, 18, 10));
+        card.setPreferredSize(new Dimension(LEGEND_WIDTH, 0));
+        card.setMinimumSize(new Dimension(LEGEND_MIN_WIDTH, 0));
+
+        JPanel head = new JPanel();
+        head.setOpaque(false);
+        head.setLayout(new BoxLayout(head, BoxLayout.Y_AXIS));
+        head.setBorder(new EmptyBorder(0, 0, 0, 10));
+        JLabel eyebrow = SagipTheme.label("LEGEND", 12, SagipTheme.accent(darkMode), Font.BOLD);
+        JLabel sub = SagipTheme.label("How to read the boxes on the camera feed", 13, SagipTheme.muted(darkMode), Font.PLAIN);
+        eyebrow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        sub.setAlignmentX(Component.LEFT_ALIGNMENT);
+        head.add(eyebrow);
+        head.add(Box.createVerticalStrut(3));
+        head.add(sub);
+
+        JPanel list = new JPanel();
+        list.setOpaque(false);
+        list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
+        list.setBorder(new EmptyBorder(0, 0, 0, 10));
+
+        list.add(sectionLabel("RISK LEVEL  (BOX COLOR)"));
+        list.add(legendItem(RiskLevel.CRITICAL.getColor(darkMode), null, "Critical",
+                "Immediate danger. Fix or remove this hazard first."));
+        list.add(legendItem(RiskLevel.HIGH.getColor(darkMode), null, "High",
+                "Serious hazard likely to cause injury or damage. Address as soon as possible."));
+        list.add(legendItem(RiskLevel.MODERATE.getColor(darkMode), null, "Medium",
+                "Moderate risk. Schedule a fix and keep monitoring."));
+        list.add(legendItem(RiskLevel.LOW.getColor(darkMode), null, "Low",
+                "Minor risk. Keep it in mind during routine safety checks."));
+
+        list.add(Box.createVerticalStrut(10));
+        list.add(sectionLabel("HAZARD TYPE  (LABEL TAG)"));
+        list.add(legendItem(SagipTheme.muted(darkMode), "F", "Fire hazard",
+                "Objects that can start or spread a fire, such as an unattended iron or an overloaded outlet."));
+        list.add(legendItem(SagipTheme.muted(darkMode), "E", "Earthquake hazard",
+                "Objects that can fall or topple during shaking, such as an unsecured shelf or heavy items on high shelves."));
+
+        list.add(Box.createVerticalStrut(10));
+        list.add(new WrappedText("Each box shows the hazard name, tag, and detection confidence, with risks listed directly below.",
+                12, SagipTheme.muted(darkMode)));
+
+        JPanel holder = new ViewportWidthPanel(new BorderLayout());
+        holder.setOpaque(false);
+        holder.add(list, BorderLayout.NORTH);
+
+        JScrollPane scroll = new JScrollPane(holder,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setBorder(null);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+        scroll.getVerticalScrollBar().setPreferredSize(new Dimension(8, 0));
+        scroll.getVerticalScrollBar().setUI(new BasicScrollBarUI() {
+            @Override
+            protected void configureScrollBarColors() {
+                super.configureScrollBarColors();
+                trackColor = SagipTheme.surface(darkMode);
+                thumbColor = SagipTheme.muted(darkMode);
+            }
+
+            @Override protected JButton createDecreaseButton(int orientation) { return emptyScrollButton(); }
+            @Override protected JButton createIncreaseButton(int orientation) { return emptyScrollButton(); }
+
+            @Override
+            protected void paintTrack(Graphics g, JComponent c, Rectangle r) {
+                g.setColor(SagipTheme.surface(darkMode));
+                g.fillRect(r.x, r.y, r.width, r.height);
+            }
+
+            @Override
+            protected void paintThumb(Graphics g, JComponent c, Rectangle r) {
+                if (r.isEmpty()) return;
+                g.setColor(thumbColor);
+                g.fillRect(r.x + 1, r.y, r.width - 2, r.height);
+            }
+        });
+
+        card.add(head, BorderLayout.NORTH);
+        card.add(scroll, BorderLayout.CENTER);
+        return card;
+    }
+
+    private JComponent sectionLabel(String text) {
+        JLabel l = SagipTheme.label(text, 13, SagipTheme.muted(darkMode), Font.BOLD);
+        l.setBorder(new EmptyBorder(12, 0, 4, 0));
+        l.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return l;
+    }
+
+    private JComponent legendItem(Color color, String glyph, String name, String description) {
+        JPanel row = new JPanel(new BorderLayout(12, 0));
+        row.setOpaque(false);
+        row.setBorder(new EmptyBorder(9, 0, 9, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        Swatch swatch = new Swatch(color, glyph);
+        swatch.setPreferredSize(new Dimension(30, 30));
+        JPanel swatchWrap = new JPanel(new BorderLayout());
+        swatchWrap.setOpaque(false);
+        swatchWrap.add(swatch, BorderLayout.NORTH);
+
+        JPanel textPanel = new JPanel();
+        textPanel.setOpaque(false);
+        textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
+        JLabel nameLabel = SagipTheme.label(name, 15, SagipTheme.text(darkMode), Font.BOLD);
+        nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        textPanel.add(nameLabel);
+        textPanel.add(Box.createVerticalStrut(2));
+        textPanel.add(new WrappedText(description, 13, SagipTheme.muted(darkMode)));
+
+        row.add(swatchWrap, BorderLayout.WEST);
+        row.add(textPanel, BorderLayout.CENTER);
+        return row;
+    }
+
+    private JButton emptyScrollButton() {
+        JButton button = new JButton();
+        Dimension none = new Dimension(0, 0);
+        button.setPreferredSize(none);
+        button.setMinimumSize(none);
+        button.setMaximumSize(none);
+        return button;
+    }
+
+    private JButton pageButton(String text) {
+        return SagipTheme.pageButton(text, darkMode, () -> {});
+    }
+
+    private void setButtonBorder(JButton button, Color lineColor) {
+        button.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(lineColor, 1),
+                new EmptyBorder(10, 16, 10, 16)));
+    }
+
+    private class Card extends JPanel {
+        private static final long serialVersionUID = 1L;
+        Card() { setOpaque(false); }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setColor(SagipTheme.surface(darkMode));
+            g.fillRect(0, 0, getWidth(), getHeight());
+            g.setColor(SagipTheme.cardLine(darkMode));
+            g.drawRect(0, 0, getWidth() - 1, getHeight() - 1);
+            g.dispose();
+            super.paintComponent(graphics);
+        }
+    }
+
+    private static class ViewportWidthPanel extends JPanel implements Scrollable {
+        private static final long serialVersionUID = 1L;
+        ViewportWidthPanel(LayoutManager layout) {
+            super(layout);
+            setOpaque(false);
+        }
+        @Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+        @Override public int getScrollableUnitIncrement(Rectangle r, int o, int d) { return 16; }
+        @Override public int getScrollableBlockIncrement(Rectangle r, int o, int d) { return Math.max(16, r.height - 16); }
+        @Override public boolean getScrollableTracksViewportWidth() { return true; }
+        @Override public boolean getScrollableTracksViewportHeight() { return false; }
+    }
+
+    private class WrappedText extends JComponent {
+        private static final long serialVersionUID = 1L;
+        private final String text;
+        private final Font font;
+        private final Color color;
+        private int lastWidth = -1;
+
+        WrappedText(String text, int size, Color color) {
+            this.text = text;
+            this.font = new Font(SagipTheme.FONT_FAMILY, Font.PLAIN, size);
+            this.color = color;
+            setAlignmentX(Component.LEFT_ALIGNMENT);
+            addComponentListener(new ComponentAdapter() {
+                @Override
+                public void componentResized(ComponentEvent event) {
+                    if (getWidth() != lastWidth) {
+                        lastWidth = getWidth();
+                        revalidate();
+                    }
+                }
+            });
+        }
+
+        private List<String> wrap(int width) {
+            FontMetrics metrics = getFontMetrics(font);
+            List<String> lines = new ArrayList<>();
+            StringBuilder current = new StringBuilder();
+            for (String word : text.split(" ")) {
+                String candidate = current.length() == 0 ? word : current + " " + word;
+                if (current.length() > 0 && metrics.stringWidth(candidate) > width) {
+                    lines.add(current.toString());
+                    current = new StringBuilder(word);
+                } else {
+                    current = new StringBuilder(candidate);
+                }
+            }
+            if (current.length() > 0) lines.add(current.toString());
+            return lines;
+        }
+
+        @Override public Dimension getPreferredSize() {
+            int width = getWidth() > 0 ? getWidth() : 240;
+            return new Dimension(120, wrap(width).size() * getFontMetrics(font).getHeight());
+        }
+        @Override public Dimension getMinimumSize() { return new Dimension(0, getPreferredSize().height); }
+        @Override public Dimension getMaximumSize() { return new Dimension(Integer.MAX_VALUE, getPreferredSize().height); }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            g.setFont(font);
+            g.setColor(color);
+            FontMetrics metrics = g.getFontMetrics();
+            int y = metrics.getAscent();
+            for (String line : wrap(getWidth())) {
+                g.drawString(line, 0, y);
+                y += metrics.getHeight();
+            }
+            g.dispose();
+        }
+    }
+
+    private class Swatch extends JComponent {
+        private static final long serialVersionUID = 1L;
+        private final Color color;
+        private final String glyph;
+
+        Swatch(Color color, String glyph) {
+            this.color = color;
+            this.glyph = glyph;
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            int w = getWidth(), h = getHeight();
+
+            if (glyph == null) {
+                g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 60));
+                g.fill(new RoundRectangle2D.Float(2, 2, w - 5, h - 5, 4, 4));
+                g.setColor(color);
+                g.setStroke(new BasicStroke(2.5f));
+                g.draw(new RoundRectangle2D.Float(2, 2, w - 5, h - 5, 4, 4));
+            } else {
+                g.setColor(color);
+                g.setStroke(new BasicStroke(1.8f));
+                g.draw(new Ellipse2D.Float(2, 2, w - 5, h - 5));
+                g.setFont(new Font(SagipTheme.FONT_FAMILY, Font.BOLD, 15));
+                FontMetrics fm = g.getFontMetrics();
+                g.setColor(SagipTheme.text(darkMode));
+                g.drawString(glyph, (w - fm.stringWidth(glyph)) / 2,
+                        (h - fm.getHeight()) / 2 + fm.getAscent());
+            }
+            g.dispose();
+        }
+    }
 }
+

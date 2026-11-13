@@ -13,7 +13,7 @@
       "type": "java",
       "name": "Run Java Swing App (Direct Debugger)",
       "request": "launch",
-      "mainClass": "DisasterHazardSystemApp",
+      "mainClass": "Main",
       "projectName": "ai-disaster-hazard-detection"
     },
     {
