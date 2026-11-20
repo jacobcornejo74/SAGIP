@@ -7,7 +7,7 @@ import javax.swing.UIManager;
  * Configures system font rendering and look-and-feel settings, then creates
  * and displays the main application window on the Swing Event Dispatch Thread.
  */
-public class Main {
+public class SAGIP {
 
     /**
      * Starts the SAGIP disaster hazard detection system.
