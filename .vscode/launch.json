@@ -3,39 +3,24 @@
   "configurations": [
     {
       "type": "java",
-      "name": "Main",
+      "name": "SAGIP",
       "request": "launch",
-      "mainClass": "Main",
-      "projectName": ""
+      "mainClass": "SAGIP"
     },
     {
-      "name": "Run Java App via Maven (Recommended)",
+      "name": "Run Java App via Maven",
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "mvn",
-      "runtimeArgs": [
-        "clean",
-        "compile",
-        "exec:java"
-      ],
+      "runtimeArgs": ["clean", "compile", "exec:java"],
       "console": "integratedTerminal"
     },
     {
-      "type": "java",
-      "name": "Run Java Swing App (Direct Debugger)",
-      "request": "launch",
-      "mainClass": "Main",
-      "projectName": "ai-disaster-hazard-detection"
-    },
-    {
-      "name": "Run Web App Simulator (npm run dev)",
+      "name": "Run Web App (npm run dev)",
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev"
-      ],
+      "runtimeArgs": ["run", "dev"],
       "console": "integratedTerminal"
     }
   ]
