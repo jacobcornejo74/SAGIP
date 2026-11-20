@@ -10,16 +10,12 @@
     </linearGradient>
   </defs>
 
-  <!-- Base Dark Charcoal Background -->
   <rect width="1200" height="248" fill="url(#bgSky)" />
   <rect y="248" width="1200" height="72" fill="url(#bgRoad)" />
 
-  <!-- Minimal Sunset Accent Disc -->
   <circle cx="1056" cy="64" r="22" fill="#F39137" fill-opacity="0.16" />
   <circle cx="1056" cy="64" r="12" fill="#F39137" fill-opacity="0.45" />
 
-  <!-- Minimalist Architectural Neighborhood Silhouette (Matching MenuBackground) -->
-  <!-- Left House -->
   <g transform="translate(36, 178)">
     <rect x="6" y="20" width="84" height="50" fill="#2A3031" stroke="#3F474A" stroke-width="1" />
     <polygon points="0,22 48,-4 96,22" fill="#1D2224" stroke="#4D5659" stroke-width="1" />
@@ -28,7 +24,6 @@
     <rect x="42" y="46" width="12" height="24" fill="#14191B" />
   </g>
 
-  <!-- Left Office -->
   <g transform="translate(152, 140)">
     <rect x="0" y="0" width="96" height="108" fill="#262E32" stroke="#3B454A" stroke-width="1" />
     <rect x="0" y="0" width="96" height="7" fill="#181E21" />
@@ -46,7 +41,6 @@
     <rect x="40" y="84" width="16" height="24" fill="#14191B" />
   </g>
 
-  <!-- Right School -->
   <g transform="translate(946, 166)">
     <rect x="0" y="14" width="112" height="68" fill="#2A3031" stroke="#3F474A" stroke-width="1" />
     <rect x="-3" y="10" width="118" height="6" fill="#181E21" />
@@ -56,7 +50,6 @@
     <rect x="46" y="56" width="20" height="26" fill="#14191B" />
   </g>
 
-  <!-- Right House -->
   <g transform="translate(1078, 184)">
     <rect x="6" y="16" width="80" height="48" fill="#262E32" stroke="#3B454A" stroke-width="1" />
     <polygon points="0,18 46,-6 92,18" fill="#1D2224" stroke="#4D5659" stroke-width="1" />
@@ -65,15 +58,12 @@
     <rect x="40" y="42" width="12" height="22" fill="#14191B" />
   </g>
 
-  <!-- Crisp Amber Horizon Divider & Road Center Line -->
   <rect x="0" y="248" width="1200" height="2" fill="#F39137" fill-opacity="0.65" />
   <rect x="540" y="282" width="44" height="3" rx="1.5" fill="#CDC6B4" fill-opacity="0.28" />
   <rect x="616" y="282" width="44" height="3" rx="1.5" fill="#CDC6B4" fill-opacity="0.28" />
 
-  <!-- Centered Contrast Card (Matching ContrastPanel) -->
   <rect x="280" y="28" width="640" height="264" rx="12" fill="#121920" fill-opacity="0.94" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1" />
 
-  <!-- Minimal Amber Camera Viewfinder Corner Brackets -->
   <g stroke="#F39137" stroke-width="2" fill="none">
     <polyline points="296,56 296,42 310,42" />
     <polyline points="890,42 904,42 904,56" />
@@ -81,61 +71,47 @@
     <polyline points="890,278 904,278 904,264" />
   </g>
 
-  <!-- Eyebrow -->
   <text x="600" y="64" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700" fill="#F39137" letter-spacing="3">
     SMART INCIDENT PREVENTION
   </text>
 
-  <!-- Main Wordmark -->
   <text x="600" y="132" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="64" font-weight="800" fill="#F7F1E2" letter-spacing="6">
     SAGIP
   </text>
 
-  <!-- Subtitle -->
   <text x="600" y="160" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#CDC6B4" letter-spacing="2.4">
     SMART GUARD FOR INCIDENT PREVENTION
   </text>
 
-  <!-- Hairline Separator -->
   <line x1="344" y1="184" x2="856" y2="184" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="1" />
 
-  <!-- Legend Strip Matching CameraPage Swatches -->
   <g transform="translate(332, 204)" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700" fill="#F7F1E2">
-    <!-- Critical -->
     <rect x="0" y="2" width="18" height="18" rx="3" fill="#E2483F" fill-opacity="0.24" stroke="#E2483F" stroke-width="2" />
     <text x="26" y="16">Critical</text>
 
-    <!-- High -->
     <rect x="92" y="2" width="18" height="18" rx="3" fill="#F39137" fill-opacity="0.24" stroke="#F39137" stroke-width="2" />
     <text x="118" y="16">High</text>
 
-    <!-- Medium -->
     <rect x="172" y="2" width="18" height="18" rx="3" fill="#F0C43C" fill-opacity="0.24" stroke="#F0C43C" stroke-width="2" />
     <text x="198" y="16">Medium</text>
 
-    <!-- Low -->
     <rect x="270" y="2" width="18" height="18" rx="3" fill="#68BE74" fill-opacity="0.24" stroke="#68BE74" stroke-width="2" />
     <text x="296" y="16">Low</text>
 
-    <!-- Divider -->
     <line x1="342" y1="0" x2="342" y2="22" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1" />
 
-    <!-- Fire [F] -->
     <circle cx="370" cy="11" r="10" fill="none" stroke="#CDC6B4" stroke-width="1.6" />
     <text x="370" y="15" text-anchor="middle" font-size="11" fill="#F7F1E2">F</text>
     <text x="388" y="16" fill="#CDC6B4">Fire</text>
 
-    <!-- Earthquake [E] -->
     <circle cx="440" cy="11" r="10" fill="none" stroke="#CDC6B4" stroke-width="1.6" />
     <text x="440" y="15" text-anchor="middle" font-size="11" fill="#F7F1E2">E</text>
     <text x="458" y="16" fill="#CDC6B4">Earthquake</text>
   </g>
 
-  <!-- Card Footer -->
   <text x="600" y="264" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="10" font-weight="700" fill="#CDC6B4" letter-spacing="2">
     FIRE, FLOOD &amp; EARTHQUAKE PREPAREDNESS
   </text>
 
-  <!-- Outer Crisp Frame -->
   <rect x="1" y="1" width="1198" height="318" fill="none" stroke="#F39137" stroke-opacity="0.7" stroke-width="2" />
 </svg>
