@@ -2,11 +2,22 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "type": "java",
+      "name": "Main",
+      "request": "launch",
+      "mainClass": "Main",
+      "projectName": ""
+    },
+    {
       "name": "Run Java App via Maven (Recommended)",
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "mvn",
-      "runtimeArgs": ["clean", "compile", "exec:java"],
+      "runtimeArgs": [
+        "clean",
+        "compile",
+        "exec:java"
+      ],
       "console": "integratedTerminal"
     },
     {
@@ -21,7 +32,10 @@
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "console": "integratedTerminal"
     }
   ]
