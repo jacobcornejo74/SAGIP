@@ -105,13 +105,37 @@
     <rect x="0" y="2" width="18" height="18" rx="3" fill="#E2483F" fill-opacity="0.24" stroke="#E2483F" stroke-width="2" />
     <text x="26" y="16">Critical</text>
 
-  
+    <!-- High -->
+    <rect x="92" y="2" width="18" height="18" rx="3" fill="#F39137" fill-opacity="0.24" stroke="#F39137" stroke-width="2" />
+    <text x="118" y="16">High</text>
+
+    <!-- Medium -->
+    <rect x="172" y="2" width="18" height="18" rx="3" fill="#F0C43C" fill-opacity="0.24" stroke="#F0C43C" stroke-width="2" />
+    <text x="198" y="16">Medium</text>
+
+    <!-- Low -->
+    <rect x="270" y="2" width="18" height="18" rx="3" fill="#68BE74" fill-opacity="0.24" stroke="#68BE74" stroke-width="2" />
+    <text x="296" y="16">Low</text>
+
+    <!-- Divider -->
+    <line x1="342" y1="0" x2="342" y2="22" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1" />
+
+    <!-- Fire [F] -->
+    <circle cx="370" cy="11" r="10" fill="none" stroke="#CDC6B4" stroke-width="1.6" />
+    <text x="370" y="15" text-anchor="middle" font-size="11" fill="#F7F1E2">F</text>
+    <text x="388" y="16" fill="#CDC6B4">Fire</text>
+
+    <!-- Earthquake [E] -->
+    <circle cx="440" cy="11" r="10" fill="none" stroke="#CDC6B4" stroke-width="1.6" />
+    <text x="440" y="15" text-anchor="middle" font-size="11" fill="#F7F1E2">E</text>
+    <text x="458" y="16" fill="#CDC6B4">Earthquake</text>
   </g>
 
-
+  <!-- Card Footer -->
   <text x="600" y="264" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="10" font-weight="700" fill="#CDC6B4" letter-spacing="2">
     FIRE, FLOOD &amp; EARTHQUAKE PREPAREDNESS
   </text>
 
+  <!-- Outer Crisp Frame -->
   <rect x="1" y="1" width="1198" height="318" fill="none" stroke="#F39137" stroke-opacity="0.7" stroke-width="2" />
 </svg>
