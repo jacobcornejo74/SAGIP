@@ -93,10 +93,10 @@ public class MainPage {
         menu.setLayout(new BoxLayout(menu, BoxLayout.Y_AXIS));
         menu.setBorder(new EmptyBorder(22, 32, 22, 32));
 
-        JLabel title = label("SAGIP", 58, menuTextColor(), Font.BOLD);
+        JLabel title = label("SAGIP", 58, menuBrandColor(), Font.BOLD);
         title.setFont(new Font("Segoe UI", Font.BOLD, 58));
         title.setAlignmentX(Component.CENTER_ALIGNMENT);
-        JLabel subtitle = label("SMART AI GUARD FOR INCIDENT PREVENTION", 12, menuTextColor(), Font.PLAIN);
+        JLabel subtitle = label("SMART AI GUARD FOR INCIDENT PREVENTION", 12, menuBrandColor(), Font.PLAIN);
         subtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
         menu.add(title);
         menu.add(Box.createVerticalStrut(3));
@@ -117,7 +117,8 @@ public class MainPage {
         center.add(menuHolder, BorderLayout.CENTER);
         background.add(center, BorderLayout.CENTER);
 
-        JLabel footer = label("SAGIP  •  FIRE & EARTHQUAKE PREPAREDNESS", 10, paletteText(), Font.BOLD);
+        JLabel footer = label("SAGIP  •  FIRE & EARTHQUAKE PREPAREDNESS", 10,
+                darkMode ? paletteText() : Color.WHITE, Font.BOLD);
         footer.setHorizontalAlignment(SwingConstants.CENTER);
         background.add(footer, BorderLayout.SOUTH);
         return background;
@@ -343,12 +344,16 @@ public class MainPage {
         return darkMode ? new Color(243, 145, 55) : new Color(190, 94, 37);
     }
 
-    private Color menuTextColor() {
+    private Color menuBrandColor() {
         return darkMode ? new Color(153, 158, 162) : paletteText();
     }
 
+    private Color menuTextColor() {
+        return darkMode ? Color.BLACK : paletteText();
+    }
+
     private Color menuDetailColor() {
-        return darkMode ? new Color(128, 134, 139) : paletteMuted();
+        return darkMode ? Color.BLACK : paletteMuted();
     }
 
     private static class MenuBackground extends JPanel {
