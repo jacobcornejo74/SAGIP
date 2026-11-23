@@ -232,15 +232,29 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
                 + title + "</span><br>"
                 + "<span style='font-family:Segoe UI;font-size:9pt;font-weight:400;color:"
                 + SagipTheme.htmlColor(menuDetailColor()) + ";'>"
-                + detail + "</span></div></html>");
+                + detail + "</span></div></html>") {
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                if (darkMode) {
+                    Graphics2D g2 = (Graphics2D) graphics.create();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setColor(getBackground());
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 14, 14);
+                    g2.dispose();
+                }
+                super.paintComponent(graphics);
+            }
+        };
         button.setFont(new Font(SagipTheme.FONT_FAMILY, Font.BOLD, 14));
         button.setForeground(menuTextColor());
-        button.setBackground(darkMode ? new Color(48, 53, 56) : new Color(244, 235, 215));
+        button.setBackground(menuButtonBackground());
         button.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(darkMode ? new Color(18, 23, 28) : new Color(99, 78, 55), 1),
+                BorderFactory.createLineBorder(
+                        darkMode ? new Color(255, 255, 255, 70) : new Color(99, 78, 55), 1),
                 new EmptyBorder(7, 20, 7, 20)));
         button.setFocusPainted(false);
-        button.setContentAreaFilled(true);
+        button.setContentAreaFilled(!darkMode);
+        button.setOpaque(!darkMode);
         button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         button.setAlignmentX(Component.CENTER_ALIGNMENT);
         button.setMaximumSize(new Dimension(360, 62));
@@ -249,27 +263,35 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
         button.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseEntered(MouseEvent event) {
-                button.setBackground(SagipTheme.hover(darkMode));
+                button.setBackground(menuButtonHoverBackground());
             }
 
             @Override
             public void mouseExited(MouseEvent event) {
-                button.setBackground(darkMode ? new Color(48, 53, 56) : new Color(244, 235, 215));
+                button.setBackground(menuButtonBackground());
             }
         });
         return button;
     }
 
+    private Color menuButtonBackground() {
+        return darkMode ? new Color(0, 0, 0, 180) : new Color(244, 235, 215);
+    }
+
+    private Color menuButtonHoverBackground() {
+        return darkMode ? new Color(55, 55, 55, 220) : SagipTheme.hover(darkMode);
+    }
+
     private Color menuBrandColor() {
-        return darkMode ? new Color(153, 158, 162) : SagipTheme.text(darkMode);
+        return darkMode ? Color.WHITE : SagipTheme.text(darkMode);
     }
 
     private Color menuTextColor() {
-        return darkMode ? Color.BLACK : SagipTheme.text(darkMode);
+        return darkMode ? Color.WHITE : SagipTheme.text(darkMode);
     }
 
     private Color menuDetailColor() {
-        return darkMode ? Color.BLACK : SagipTheme.muted(darkMode);
+        return darkMode ? Color.WHITE : SagipTheme.muted(darkMode);
     }
 
     private JComponent createStorageScreen() {
