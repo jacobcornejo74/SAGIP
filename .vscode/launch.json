@@ -3,6 +3,13 @@
   "configurations": [
     {
       "type": "java",
+      "name": "DisasterHazardSystemApp",
+      "request": "launch",
+      "mainClass": "DisasterHazardSystemApp",
+      "projectName": "ai-disaster-hazard-detection"
+    },
+    {
+      "type": "java",
       "name": "SAGIP",
       "request": "launch",
       "mainClass": "SAGIP"
@@ -12,7 +19,11 @@
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "mvn",
-      "runtimeArgs": ["clean", "compile", "exec:java"],
+      "runtimeArgs": [
+        "clean",
+        "compile",
+        "exec:java"
+      ],
       "console": "integratedTerminal"
     },
     {
@@ -20,7 +31,10 @@
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "console": "integratedTerminal"
     }
   ]
