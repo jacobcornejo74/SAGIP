@@ -195,9 +195,9 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
         menu.setLayout(new BoxLayout(menu, BoxLayout.Y_AXIS));
         menu.setBorder(new EmptyBorder(22, 32, 22, 32));
 
-        JLabel title = SagipTheme.label("SAGIP", 58, SagipTheme.text(darkMode), Font.BOLD);
+        JLabel title = SagipTheme.label("SAGIP", 58, menuBrandColor(), Font.BOLD);
         title.setAlignmentX(Component.CENTER_ALIGNMENT);
-        JLabel subtitle = SagipTheme.label("SMART GUARD FOR INCIDENT PREVENTION", 12, SagipTheme.muted(darkMode), Font.PLAIN);
+        JLabel subtitle = SagipTheme.label("SMART GUARD FOR INCIDENT PREVENTION", 12, menuBrandColor(), Font.PLAIN);
         subtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
         menu.add(title);
         menu.add(Box.createVerticalStrut(3));
@@ -218,7 +218,8 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
         center.add(menuHolder, BorderLayout.CENTER);
         background.add(center, BorderLayout.CENTER);
 
-        JLabel footer = SagipTheme.label("SAGIP  \u2022  FIRE & EARTHQUAKE PREPAREDNESS", 10, SagipTheme.text(darkMode), Font.BOLD);
+        JLabel footer = SagipTheme.label("SAGIP  \u2022  FIRE & EARTHQUAKE PREPAREDNESS", 10,
+                darkMode ? SagipTheme.text(darkMode) : Color.WHITE, Font.BOLD);
         footer.setHorizontalAlignment(SwingConstants.CENTER);
         background.add(footer, BorderLayout.SOUTH);
         return background;
@@ -227,13 +228,13 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
     private JButton menuButton(String title, String detail, Runnable action) {
         JButton button = new JButton("<html><div style='text-align:center;'>"
                 + "<span style='font-family:Segoe UI;font-size:14pt;font-weight:700;color:"
-                + SagipTheme.htmlColor(SagipTheme.text(darkMode)) + ";'>"
+                + SagipTheme.htmlColor(menuTextColor()) + ";'>"
                 + title + "</span><br>"
                 + "<span style='font-family:Segoe UI;font-size:9pt;font-weight:400;color:"
-                + SagipTheme.htmlColor(SagipTheme.muted(darkMode)) + ";'>"
+                + SagipTheme.htmlColor(menuDetailColor()) + ";'>"
                 + detail + "</span></div></html>");
         button.setFont(new Font(SagipTheme.FONT_FAMILY, Font.BOLD, 14));
-        button.setForeground(SagipTheme.text(darkMode));
+        button.setForeground(menuTextColor());
         button.setBackground(darkMode ? new Color(48, 53, 56) : new Color(244, 235, 215));
         button.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(darkMode ? new Color(18, 23, 28) : new Color(99, 78, 55), 1),
@@ -257,6 +258,18 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
             }
         });
         return button;
+    }
+
+    private Color menuBrandColor() {
+        return darkMode ? new Color(153, 158, 162) : SagipTheme.text(darkMode);
+    }
+
+    private Color menuTextColor() {
+        return darkMode ? Color.BLACK : SagipTheme.text(darkMode);
+    }
+
+    private Color menuDetailColor() {
+        return darkMode ? Color.BLACK : SagipTheme.muted(darkMode);
     }
 
     private JComponent createStorageScreen() {
