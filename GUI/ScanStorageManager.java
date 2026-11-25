@@ -1,10 +1,13 @@
 package GUI;
 
 import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import javax.imageio.ImageIO;
 import java.util.List;
@@ -13,156 +16,191 @@ import java.util.List;
  * Saves and loads camera scan records (sagip-storage/scans.json) and PNG captures with boxes.
  */
 class ScanStorageManager {
-    private final Path storageDir = Paths.get("sagip-storage");
-    private final Path capturesDir = storageDir.resolve("captures");
-    private final Path jsonFile = storageDir.resolve("scans.json");
+    private final Path storageDir;
+    private final Path capturesDir;
+    private final Path jsonFile;
 
-    public List<SavedScanRecord> loadAll() {
+    ScanStorageManager() {
+        this(Paths.get("sagip-storage"));
+    }
+
+    ScanStorageManager(Path storageDir) {
+        this.storageDir = storageDir;
+        this.capturesDir = storageDir.resolve("captures");
+        this.jsonFile = storageDir.resolve("scans.json");
+    }
+
+    public List<SavedScanRecord> loadAll() throws IOException {
         List<SavedScanRecord> result = new ArrayList<>();
         if (!Files.exists(jsonFile)) {
             return result;
         }
+        String raw = Files.readString(jsonFile, StandardCharsets.UTF_8);
+        Object parsed;
         try {
-            String raw = Files.readString(jsonFile, StandardCharsets.UTF_8);
-            Object parsed = new SimpleJsonParser(raw).parse();
-            if (!(parsed instanceof List<?> list)) {
-                return result;
-            }
-            for (Object itemObj : list) {
-                if (!(itemObj instanceof Map<?, ?> map)) continue;
-                String id = asStr(map.get("id"), String.valueOf(System.currentTimeMillis()));
-                String timestamp = asStr(map.get("timestamp"), "");
-                String severity = asStr(map.get("overallSeverity"), "LOW");
-                String label = asStr(map.get("overallLabel"), "LOW RISK");
-                int count = asInt(map.get("detectionCount"), 0);
-                String imageFile = asStr(map.get("imageFile"), "");
+            parsed = new SimpleJsonParser(raw).parse();
+        } catch (RuntimeException e) {
+            throw new IOException("Saved assessments contain invalid JSON.", e);
+        }
+        if (!(parsed instanceof List<?> list)) {
+            throw new IOException("Saved assessments must be stored as a JSON array.");
+        }
 
-                BufferedImage snapshot = null;
-                if (!imageFile.isEmpty()) {
-                    Path imgPath = Paths.get(imageFile);
-                    if (Files.exists(imgPath)) {
-                        try {
-                            snapshot = ImageIO.read(imgPath.toFile());
-                        } catch (Exception ignored) {}
+        for (Object itemObj : list) {
+            if (!(itemObj instanceof Map<?, ?> map)) continue;
+            String id = asStr(map.get("id"), String.valueOf(System.currentTimeMillis()));
+            String timestamp = asStr(map.get("timestamp"), "");
+            String severity = asStr(map.get("overallSeverity"), "LOW");
+            String label = asStr(map.get("overallLabel"), "LOW RISK");
+            int count = asInt(map.get("detectionCount"), 0);
+            String imageFile = asStr(map.get("imageFile"), "");
+
+            BufferedImage snapshot = null;
+            if (!imageFile.isEmpty()) {
+                Path imgPath = Paths.get(imageFile);
+                if (Files.exists(imgPath)) {
+                    try {
+                        snapshot = ImageIO.read(imgPath.toFile());
+                    } catch (IOException e) {
+                        System.err.println("[SAGIP] Could not read saved capture " + imageFile + ": " + e.getMessage());
                     }
                 }
-
-                List<SavedDetectionEntry> detections = new ArrayList<>();
-                Object itemsObj = map.get("items");
-                if (itemsObj instanceof List<?> detList) {
-                    for (Object detRaw : detList) {
-                        if (!(detRaw instanceof Map<?, ?> det)) continue;
-                        String dLabel = asStr(det.get("label"), "Object");
-                        String dTag = asStr(det.get("tag"), "E");
-                        int dConf = asInt(det.get("confidence"), 0);
-                        String dSev = asStr(det.get("severity"), "LOW");
-                        double bx = 0, by = 0, bw = 0, bh = 0;
-                        if (det.get("bbox") instanceof Map<?, ?> boxMap) {
-                            bx = asDouble(boxMap.get("x"), 0);
-                            by = asDouble(boxMap.get("y"), 0);
-                            bw = asDouble(boxMap.get("width"), 0);
-                            bh = asDouble(boxMap.get("height"), 0);
-                        }
-                        List<String> risks = new ArrayList<>();
-                        if (det.get("risks") instanceof List<?> riskList) {
-                            for (Object r : riskList) {
-                                if (r != null) risks.add(String.valueOf(r));
-                            }
-                        }
-                        detections.add(new SavedDetectionEntry(dLabel, dTag, dConf, dSev, bx, by, bw, bh, risks));
-                    }
-                }
-                result.add(new SavedScanRecord(id, timestamp, severity, label, count, imageFile, snapshot, detections));
             }
-        } catch (Exception e) {
-            System.err.println("[SAGIP] Failed to read scans.json: " + e.getMessage());
+
+            List<SavedDetectionEntry> detections = new ArrayList<>();
+            Object itemsObj = map.get("items");
+            if (itemsObj instanceof List<?> detList) {
+                for (Object detRaw : detList) {
+                    if (!(detRaw instanceof Map<?, ?> det)) continue;
+                    String dLabel = asStr(det.get("label"), "Object");
+                    String dTag = asStr(det.get("tag"), "E");
+                    int dConf = asInt(det.get("confidence"), 0);
+                    String dSev = asStr(det.get("severity"), "LOW");
+                    double bx = 0, by = 0, bw = 0, bh = 0;
+                    if (det.get("bbox") instanceof Map<?, ?> boxMap) {
+                        bx = asDouble(boxMap.get("x"), 0);
+                        by = asDouble(boxMap.get("y"), 0);
+                        bw = asDouble(boxMap.get("width"), 0);
+                        bh = asDouble(boxMap.get("height"), 0);
+                    }
+                    List<String> risks = new ArrayList<>();
+                    if (det.get("risks") instanceof List<?> riskList) {
+                        for (Object r : riskList) {
+                            if (r != null) risks.add(String.valueOf(r));
+                        }
+                    }
+                    detections.add(new SavedDetectionEntry(dLabel, dTag, dConf, dSev, bx, by, bw, bh, risks));
+                }
+            }
+            result.add(new SavedScanRecord(id, timestamp, severity, label, count, imageFile, snapshot, detections));
         }
         return result;
     }
 
     public SavedScanRecord saveNewScan(String id, String timestamp, String overallSeverity, String overallLabel,
-                                       int detectionCount, BufferedImage snapshot, List<SavedDetectionEntry> detections) {
+                                       int detectionCount, BufferedImage snapshot, List<SavedDetectionEntry> detections)
+            throws IOException {
         String relImagePath = "";
+        Path imagePath = null;
         try {
-            Files.createDirectories(capturesDir);
             if (snapshot != null) {
-                Path imgPath = capturesDir.resolve("scan_" + id + ".png");
-                ImageIO.write(snapshot, "png", imgPath.toFile());
-                relImagePath = "sagip-storage/captures/scan_" + id + ".png";
-            }
-        } catch (Exception e) {
-            System.err.println("[SAGIP] Failed to save capture image: " + e.getMessage());
-        }
-
-        SavedScanRecord record = new SavedScanRecord(
-                id, timestamp, overallSeverity, overallLabel, detectionCount, relImagePath, snapshot, detections);
-
-        List<SavedScanRecord> current = loadAll();
-        current.add(0, record);
-        writeAll(current);
-        return record;
-    }
-
-    public void deleteScan(SavedScanRecord target, List<SavedScanRecord> remaining) {
-        if (target.imageFile != null && !target.imageFile.isEmpty()) {
-            try {
-                Files.deleteIfExists(Paths.get(target.imageFile));
-            } catch (Exception ignored) {}
-        }
-        writeAll(remaining);
-    }
-
-    public void clearAll(List<SavedScanRecord> records) {
-        for (SavedScanRecord rec : records) {
-            if (rec.imageFile != null && !rec.imageFile.isEmpty()) {
-                try {
-                    Files.deleteIfExists(Paths.get(rec.imageFile));
-                } catch (Exception ignored) {}
-            }
-        }
-        writeAll(Collections.emptyList());
-    }
-
-    private void writeAll(List<SavedScanRecord> records) {
-        try {
-            Files.createDirectories(storageDir);
-            StringBuilder sb = new StringBuilder();
-            sb.append("[\n");
-            for (int i = 0; i < records.size(); i++) {
-                SavedScanRecord r = records.get(i);
-                sb.append("  {\n");
-                sb.append("    \"id\": ").append(jsonStr(r.id)).append(",\n");
-                sb.append("    \"timestamp\": ").append(jsonStr(r.timestamp)).append(",\n");
-                sb.append("    \"overallSeverity\": ").append(jsonStr(r.overallSeverity)).append(",\n");
-                sb.append("    \"overallLabel\": ").append(jsonStr(r.overallLabel)).append(",\n");
-                sb.append("    \"detectionCount\": ").append(r.detectionCount).append(",\n");
-                sb.append("    \"imageFile\": ").append(jsonStr(r.imageFile)).append(",\n");
-                sb.append("    \"items\": [\n");
-                for (int j = 0; j < r.detections.size(); j++) {
-                    SavedDetectionEntry d = r.detections.get(j);
-                    sb.append("      {\n");
-                    sb.append("        \"label\": ").append(jsonStr(d.label)).append(",\n");
-                    sb.append("        \"tag\": ").append(jsonStr(d.tag)).append(",\n");
-                    sb.append("        \"confidence\": ").append(d.confidence).append(",\n");
-                    sb.append("        \"severity\": ").append(jsonStr(d.severity)).append(",\n");
-                    sb.append(String.format(Locale.US,
-                            "        \"bbox\": { \"x\": %.4f, \"y\": %.4f, \"width\": %.4f, \"height\": %.4f },\n",
-                            d.x, d.y, d.width, d.height));
-                    sb.append("        \"risks\": [");
-                    for (int k = 0; k < d.risks.size(); k++) {
-                        if (k > 0) sb.append(", ");
-                        sb.append(jsonStr(d.risks.get(k)));
-                    }
-                    sb.append("]\n");
-                    sb.append("      }").append(j < r.detections.size() - 1 ? "," : "").append("\n");
+                Files.createDirectories(capturesDir);
+                imagePath = capturesDir.resolve("scan_" + id + ".png");
+                if (!ImageIO.write(snapshot, "png", imagePath.toFile())) {
+                    throw new IOException("No PNG writer is available for the scan image.");
                 }
-                sb.append("    ]\n");
-                sb.append("  }").append(i < records.size() - 1 ? "," : "").append("\n");
+                relImagePath = imagePath.toString();
             }
-            sb.append("]\n");
-            Files.writeString(jsonFile, sb.toString(), StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            System.err.println("[SAGIP] Failed to write scans.json: " + e.getMessage());
+
+            SavedScanRecord record = new SavedScanRecord(
+                    id, timestamp, overallSeverity, overallLabel, detectionCount, relImagePath, snapshot, detections);
+
+            List<SavedScanRecord> current = loadAll();
+            current.add(0, record);
+            writeAll(current);
+            return record;
+        } catch (IOException e) {
+            if (imagePath != null) {
+                try {
+                    Files.deleteIfExists(imagePath);
+                } catch (IOException cleanupException) {
+                    e.addSuppressed(cleanupException);
+                }
+            }
+            throw e;
+        }
+    }
+
+    public void deleteScan(SavedScanRecord target, List<SavedScanRecord> remaining) throws IOException {
+        writeAll(remaining);
+        deleteSnapshot(target);
+    }
+
+    public void clearAll(List<SavedScanRecord> records) throws IOException {
+        writeAll(Collections.emptyList());
+        for (SavedScanRecord rec : records) {
+            deleteSnapshot(rec);
+        }
+    }
+
+    private void deleteSnapshot(SavedScanRecord record) {
+        if (record.imageFile == null || record.imageFile.isEmpty()) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(Paths.get(record.imageFile));
+        } catch (IOException e) {
+            System.err.println("[SAGIP] Could not delete saved capture " + record.imageFile + ": " + e.getMessage());
+        }
+    }
+
+    private void writeAll(List<SavedScanRecord> records) throws IOException {
+        Files.createDirectories(storageDir);
+        StringBuilder sb = new StringBuilder();
+        sb.append("[\n");
+        for (int i = 0; i < records.size(); i++) {
+            SavedScanRecord r = records.get(i);
+            sb.append("  {\n");
+            sb.append("    \"id\": ").append(jsonStr(r.id)).append(",\n");
+            sb.append("    \"timestamp\": ").append(jsonStr(r.timestamp)).append(",\n");
+            sb.append("    \"overallSeverity\": ").append(jsonStr(r.overallSeverity)).append(",\n");
+            sb.append("    \"overallLabel\": ").append(jsonStr(r.overallLabel)).append(",\n");
+            sb.append("    \"detectionCount\": ").append(r.detectionCount).append(",\n");
+            sb.append("    \"imageFile\": ").append(jsonStr(r.imageFile)).append(",\n");
+            sb.append("    \"items\": [\n");
+            for (int j = 0; j < r.detections.size(); j++) {
+                SavedDetectionEntry d = r.detections.get(j);
+                sb.append("      {\n");
+                sb.append("        \"label\": ").append(jsonStr(d.label)).append(",\n");
+                sb.append("        \"tag\": ").append(jsonStr(d.tag)).append(",\n");
+                sb.append("        \"confidence\": ").append(d.confidence).append(",\n");
+                sb.append("        \"severity\": ").append(jsonStr(d.severity)).append(",\n");
+                sb.append(String.format(Locale.US,
+                        "        \"bbox\": { \"x\": %.4f, \"y\": %.4f, \"width\": %.4f, \"height\": %.4f },\n",
+                        d.x, d.y, d.width, d.height));
+                sb.append("        \"risks\": [");
+                for (int k = 0; k < d.risks.size(); k++) {
+                    if (k > 0) sb.append(", ");
+                    sb.append(jsonStr(d.risks.get(k)));
+                }
+                sb.append("]\n");
+                sb.append("      }").append(j < r.detections.size() - 1 ? "," : "").append("\n");
+            }
+            sb.append("    ]\n");
+            sb.append("  }").append(i < records.size() - 1 ? "," : "").append("\n");
+        }
+        sb.append("]\n");
+
+        Path tempFile = Files.createTempFile(storageDir, "scans-", ".tmp");
+        try {
+            Files.writeString(tempFile, sb.toString(), StandardCharsets.UTF_8);
+            try {
+                Files.move(tempFile, jsonFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tempFile, jsonFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(tempFile);
         }
     }
 

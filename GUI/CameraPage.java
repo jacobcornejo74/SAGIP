@@ -8,6 +8,7 @@ import java.awt.event.*;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.util.*;
 import java.util.List;
 
@@ -76,11 +77,18 @@ class CameraPage extends JPanel implements DetectionListener {
             }
             List<HazardItem> hazards = engine.getDetectedHazards();
             if (annotated != null) {
-                app.saveAssessment(annotated, hazards, activeScenario);
-                saveButton.setText("SAVED");
-                javax.swing.Timer reset = new javax.swing.Timer(1500, e -> saveButton.setText("SAVE SCAN"));
-                reset.setRepeats(false);
-                reset.start();
+                try {
+                    app.saveAssessment(annotated, hazards, activeScenario);
+                    saveButton.setText("SAVED");
+                    javax.swing.Timer reset = new javax.swing.Timer(1500, e -> saveButton.setText("SAVE SCAN"));
+                    reset.setRepeats(false);
+                    reset.start();
+                } catch (IOException e) {
+                    JOptionPane.showMessageDialog(this,
+                            "Could not save the scan. Check that the storage folder is writable.\n" + e.getMessage(),
+                            "Storage Error",
+                            JOptionPane.ERROR_MESSAGE);
+                }
             }
         });
 

@@ -7,6 +7,7 @@ import java.awt.event.*;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
@@ -55,7 +56,11 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
         setSize(1180, 740);
         setLocationRelativeTo(null);
 
-        savedAssessments.addAll(storageManager.loadAll());
+        try {
+            savedAssessments.addAll(storageManager.loadAll());
+        } catch (IOException e) {
+            showStorageError("load saved assessments", e);
+        }
         rebuildScreens(SCREEN_HOME);
 
         addWindowListener(new WindowAdapter() {
@@ -119,7 +124,8 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
         rebuildScreens(SCREEN_HOME);
     }
 
-    public void saveAssessment(BufferedImage annotatedSnapshot, List<HazardItem> hazards, DisasterScenario scenario) {
+    public void saveAssessment(BufferedImage annotatedSnapshot, List<HazardItem> hazards, DisasterScenario scenario)
+            throws IOException {
         String id = String.valueOf(System.currentTimeMillis());
         String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
         RiskLevel overall = (scenario != null) ? scenario.evaluateOverallRisk(hazards) : RiskLevel.LOW;
@@ -150,15 +156,32 @@ public class DisasterHazardSystemApp extends JFrame implements ScreenNavigator {
     }
 
     public void deleteAssessment(SavedScanRecord record) {
-        savedAssessments.remove(record);
-        storageManager.deleteScan(record, savedAssessments);
-        rebuildScreens(SCREEN_STORAGE);
+        List<SavedScanRecord> remaining = new ArrayList<>(savedAssessments);
+        remaining.remove(record);
+        try {
+            storageManager.deleteScan(record, remaining);
+            savedAssessments.remove(record);
+            rebuildScreens(SCREEN_STORAGE);
+        } catch (IOException e) {
+            showStorageError("delete this assessment", e);
+        }
     }
 
     public void clearAllAssessments() {
-        storageManager.clearAll(savedAssessments);
-        savedAssessments.clear();
-        rebuildScreens(SCREEN_STORAGE);
+        try {
+            storageManager.clearAll(savedAssessments);
+            savedAssessments.clear();
+            rebuildScreens(SCREEN_STORAGE);
+        } catch (IOException e) {
+            showStorageError("clear saved assessments", e);
+        }
+    }
+
+    private void showStorageError(String action, IOException exception) {
+        JOptionPane.showMessageDialog(this,
+                "Could not " + action + ". Check that the storage folder is writable.\n" + exception.getMessage(),
+                "Storage Error",
+                JOptionPane.ERROR_MESSAGE);
     }
 
     private JComponent createHomeScreen() {
