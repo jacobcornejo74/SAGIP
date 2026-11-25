@@ -70,6 +70,7 @@
                     <target>17</target>
                     <includes>
                         <include>*.java</include>
+                        <include>GUI/*.java</include>
                     </includes>
                 </configuration>
             </plugin>

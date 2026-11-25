@@ -23,7 +23,7 @@
 Real-time webcam object detection and disaster vulnerability risk analysis with color-coded bounding boxes (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), `[F]` Fire / `[E]` Earthquake hazard tags, per-object risk lists, and persistent scan storage.
 
 This project includes:
-1. **Java Desktop Application**: Built with Java Swing, OpenCV/JavaCV, Sarxos Webcam, and YOLOv8 via ONNX Runtime (`SAGIP.java` + `DisasterHazardSystemApp.java` + `pom.xml`).
+1. **Java Desktop Application**: Built with Java Swing, OpenCV/JavaCV, Sarxos Webcam, and YOLOv8 via ONNX Runtime. `SAGIP.java` launches the application; the desktop implementation is organized into individual Java classes in `GUI/`.
 2. **Web Application**: Built with React, TypeScript, and TensorFlow.js COCO-SSD object detection (`src/App.tsx`).
 
 ---

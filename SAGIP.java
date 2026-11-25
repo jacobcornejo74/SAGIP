@@ -1,5 +1,6 @@
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
+import GUI.DisasterHazardSystemApp;
 
 /**
  * Primary entry point for launching the SAGIP application.
